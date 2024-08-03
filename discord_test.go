@@ -29,7 +29,9 @@ func TestDiscord(t *testing.T) {
 	require.Nil(err)
 
 	// Create a new manager
-	manager, err := align.NewManager(path)
+	manager, err := align.CreateManager("test-discord", path, align.Options{
+		UseSQL: false,
+	})
 	require.Nil(err)
 
 	// Initialize the discord module
