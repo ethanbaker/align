@@ -23,7 +23,7 @@ const TIME_FORMAT = "Monday 01/02"
 // Manager struct represents a top level manager class
 type Manager struct {
 	gorm.Model
-	Name string `gorm:"uniqueIndex"` // The name identifier for the manager
+	Name string `gorm:"uniqueIndex,length:256"` // The name identifier for the manager
 
 	availability  map[string]map[string]bool `gorm:"-"` // Persons' availabilities
 	config        *Config                    `gorm:"-"` // Base align config
@@ -162,13 +162,7 @@ func (m *Manager) generateAvailability() map[string]bool {
 
 // Create and initialize a new manager
 func CreateManager(name string, path string, options Options) (*Manager, error) {
-	manager := Manager{
-		availability:  make(map[string]map[string]bool),
-		moduleConfigs: make(map[string]interface{}),
-		config:        &Config{},
-		edit:          &sync.Mutex{},
-		options:       &options,
-	}
+	var manager Manager
 
 	log.Println("[INFO]: reading yaml config file")
 
@@ -182,12 +176,79 @@ func CreateManager(name string, path string, options Options) (*Manager, error) 
 	log.Println("[INFO]: unmarshalling yaml config file")
 
 	// Unmarshal the config
-	if err = yaml.Unmarshal(file, manager.config); err != nil {
+	config := Config{}
+	if err = yaml.Unmarshal(file, &config); err != nil {
 		return nil, err
 	}
 
 	log.Println("[INFO]: successfully unmarshalled yaml config file")
-	log.Printf("[INFO]: loading timezone location '%v'\n", manager.config.ContactTimezone)
+
+	if options.UseSQL {
+		log.Println("[INFO]: setting up SQL")
+
+		// Get the sql credentials if the manager is using SQL
+		dsn := mysql_driver.Config{
+			User:      config.Dsn.User,
+			Passwd:    config.Dsn.Passwd,
+			Net:       config.Dsn.Net,
+			Addr:      config.Dsn.Addr,
+			DBName:    config.Dsn.DBName,
+			ParseTime: true,
+		}
+
+		log.Println("[INFO]: opening gorm database")
+
+		// Open the gorm database
+		db, err := gorm.Open(mysql.Open(dsn.FormatDSN()), &gorm.Config{})
+		if err != nil {
+			return nil, err
+		}
+
+		log.Println("[INFO]: migrating gorm databases")
+
+		// Migrate the manager database
+		if !db.Migrator().HasTable(&Manager{}) {
+			if err = db.AutoMigrate(&Manager{}); err != nil {
+				return nil, err
+			}
+		}
+
+		log.Println("[INFO]: loading managers from SQL")
+
+		// Load existing managers
+		managers := []Manager{}
+		if err := db.Model(&Manager{}).Find(&managers).Error; err != nil {
+			return nil, err
+		}
+
+		log.Println("[INFO]: checking for existing managers")
+
+		// Check for existing managers
+		for _, m := range managers {
+			if m.Name == name {
+				log.Printf("[INFO]: returning existing manager with name %v", m.Name)
+
+				manager.db = db
+			}
+		}
+
+		// If there is no existing manager, save the current one
+		if manager.db == nil {
+			manager.db = db
+			db.Save(&manager)
+		}
+	} else {
+		manager.Name = name
+	}
+
+	// Populate manager fields
+	manager.availability = make(map[string]map[string]bool)
+	manager.moduleConfigs = make(map[string]interface{})
+	manager.config = &config
+	manager.edit = &sync.Mutex{}
+	manager.options = &options
+
+	log.Printf("[INFO]: loading timezone location '%v'\n", config.ContactTimezone)
 
 	// Load the config timezone
 	loc, err := time.LoadLocation(manager.config.ContactTimezone)
@@ -217,59 +278,6 @@ func CreateManager(name string, path string, options Options) (*Manager, error) 
 	_, err = cronService.AddFunc(manager.config.DeadlineTime, manager.OnCompletion)
 	if err != nil {
 		return nil, err
-	}
-
-	if options.UseSQL {
-		log.Println("[INFO]: setting up SQL")
-
-		// Get the sql credentials if the manager is using SQL
-		dsn := mysql_driver.Config{
-			User:   manager.config.Dsn.User,
-			Passwd: manager.config.Dsn.Passwd,
-			Net:    manager.config.Dsn.Net,
-			Addr:   manager.config.Dsn.Addr,
-			DBName: manager.config.Dsn.DBName,
-		}
-
-		log.Println("[INFO]: opening gorm database")
-
-		// Open the gorm database
-		db, err := gorm.Open(mysql.Open(dsn.FormatDSN()), &gorm.Config{})
-		if err != nil {
-			return nil, err
-		}
-		manager.db = db
-
-		log.Println("[INFO]: migrating gorm databases")
-
-		// Migrate the manager database
-		if err = db.AutoMigrate(&Manager{}); err != nil {
-			return nil, err
-		}
-		if err = db.AutoMigrate(&discordEntry{}); err != nil {
-			return nil, err
-		}
-		// TODO: other entries
-
-		log.Println("[INFO]: loading managers from SQL")
-
-		// Load existing managers
-		managers := []Manager{}
-		if err := manager.db.Model(&Manager{}).Find(&managers).Error; err != nil {
-			return nil, err
-		}
-
-		log.Println("[INFO]: checking for existing managers")
-
-		// Check for existing managers
-		for _, m := range managers {
-			if m.Name == name {
-				log.Printf("[INFO]: returning existing manager with name %v", m.Name)
-
-				// If there is an existing manager, return it
-				return &m, nil
-			}
-		}
 	}
 
 	log.Println("[INFO]: returning newly created manager")

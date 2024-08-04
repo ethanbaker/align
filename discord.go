@@ -27,7 +27,7 @@ type discordEntry struct {
 
 	// The manager this entry is related to
 	Manager   *Manager
-	ManagerID uint
+	ManagerID *int
 }
 
 /* ---- GLOBALS ---- */
@@ -72,6 +72,21 @@ func InitDiscord(manager *Manager, s *discordgo.Session) {
 
 	manager.moduleConfigs["discord"] = DiscordConfig{
 		Session: s,
+	}
+
+	if !manager.options.UseSQL {
+		return
+	}
+
+	// If using SQL, populate discord entries
+	if !manager.db.Migrator().HasTable(&discordEntry{}) {
+		if err := manager.db.AutoMigrate(&discordEntry{}); err != nil {
+			log.Fatalf("[ERR]: cannot migrate discordEntry object (err: %v)\n", err)
+		}
+	}
+
+	if err := manager.db.Model(&discordEntry{}).Find(&discordEntries).Error; err != nil {
+		log.Fatalf("[ERR]: cannot read discord entries from database (err: %v)\n", err)
 	}
 }
 
@@ -152,13 +167,13 @@ func DiscordRequest(person Person, manager *Manager) error {
 			ChannelID: channel.ID,
 			MessageID: m.ID,
 			Manager:   manager,
-			ManagerID: manager.ID,
 		}
 		discordEntries = append(discordEntries, entry)
 
+		// If using SQL, add to SQL database
 		if manager.options.UseSQL {
 			log.Println("[INFO]: adding discord entry to SQL")
-			manager.db.Save(entry)
+			manager.db.Save(&entry)
 		}
 	}
 
@@ -203,6 +218,12 @@ func DiscordGather(person Person, manager *Manager) error {
 		// On matching entry, add to local array and remove from global
 		if discordEntries[i].Person == person.Name {
 			entries = append(entries, discordEntries[i])
+
+			// If using SQL, remove from SQL database
+			if manager.options.UseSQL {
+				manager.db.Delete(&discordEntries[i])
+			}
+
 			discordEntries = append(discordEntries[:i], discordEntries[i+1:]...)
 			i--
 		}

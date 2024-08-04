@@ -52,3 +52,59 @@ func TestDiscord(t *testing.T) {
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
 }
+
+func TestDiscordPreSQL(t *testing.T) {
+	require := require.New(t)
+
+	// Read in discord credentials
+	env, err := godotenv.Read("./config/modules/.env.discord")
+	require.Nil(err)
+
+	// Start a discordgo session
+	session, err := discordgo.New("Bot " + env["DISCORD_TOKEN"])
+	require.Nil(err)
+
+	err = session.Open()
+	require.Nil(err)
+
+	// Create a new manager
+	manager, err := align.CreateManager("test-discord", path, align.Options{
+		UseSQL: true,
+	})
+	require.Nil(err)
+
+	// Initialize the discord module
+	align.InitDiscord(manager, session)
+
+	// Perform the contact
+	manager.OnContact()
+
+	// Assume power loss/program stops here
+}
+
+func TestDiscordPostSQL(t *testing.T) {
+	require := require.New(t)
+
+	// Read in discord credentials
+	env, err := godotenv.Read("./config/modules/.env.discord")
+	require.Nil(err)
+
+	// Start a discordgo session
+	session, err := discordgo.New("Bot " + env["DISCORD_TOKEN"])
+	require.Nil(err)
+
+	err = session.Open()
+	require.Nil(err)
+
+	// Create a new manager
+	manager, err := align.CreateManager("test-discord", path, align.Options{
+		UseSQL: true,
+	})
+	require.Nil(err)
+
+	// Initialize the discord module
+	align.InitDiscord(manager, session)
+
+	// Send response with on completion
+	manager.OnCompletion()
+}
