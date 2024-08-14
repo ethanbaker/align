@@ -12,13 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const path = "./config/test_config.yml"
-
 func TestDiscord(t *testing.T) {
 	require := require.New(t)
 
 	// Read in discord credentials
-	env, err := godotenv.Read("./config/modules/.env.discord")
+	env, err := godotenv.Read("./config/discord/.env")
 	require.Nil(err)
 
 	// Start a discordgo session
@@ -29,7 +27,7 @@ func TestDiscord(t *testing.T) {
 	require.Nil(err)
 
 	// Create a new manager
-	manager, err := align.CreateManager("test-discord", path, align.Options{
+	manager, err := align.CreateManager("test-discord", "./config/discord/config.yml", align.Options{
 		UseSQL: false,
 	})
 	require.Nil(err)
@@ -57,7 +55,7 @@ func TestDiscordPreSQL(t *testing.T) {
 	require := require.New(t)
 
 	// Read in discord credentials
-	env, err := godotenv.Read("./config/modules/.env.discord")
+	env, err := godotenv.Read("./config/discord/.env")
 	require.Nil(err)
 
 	// Start a discordgo session
@@ -68,7 +66,7 @@ func TestDiscordPreSQL(t *testing.T) {
 	require.Nil(err)
 
 	// Create a new manager
-	manager, err := align.CreateManager("test-discord", path, align.Options{
+	manager, err := align.CreateManager("test-discord", "./config/discord/config.yml", align.Options{
 		UseSQL: true,
 	})
 	require.Nil(err)
@@ -86,7 +84,7 @@ func TestDiscordPostSQL(t *testing.T) {
 	require := require.New(t)
 
 	// Read in discord credentials
-	env, err := godotenv.Read("./config/modules/.env.discord")
+	env, err := godotenv.Read("./config/discord/.env")
 	require.Nil(err)
 
 	// Start a discordgo session
@@ -97,7 +95,7 @@ func TestDiscordPostSQL(t *testing.T) {
 	require.Nil(err)
 
 	// Create a new manager
-	manager, err := align.CreateManager("test-discord", path, align.Options{
+	manager, err := align.CreateManager("test-discord", "./config/discord/config.yml", align.Options{
 		UseSQL: true,
 	})
 	require.Nil(err)

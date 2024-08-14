@@ -44,17 +44,17 @@ var emojis = []string{
 	"7️⃣",
 }
 
-const REQUEST_TEMPLATE_HEADER = `⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜
+const discordRequestHeader = `⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜
 
 **Schedule for %v**`
 
-const REQUEST_TEMPLATE_BODY = `%v
+const discordRequestBody = `%v
 ❌ - None
 
 React with the corresponding emoji for dates you are free
 `
 
-const RESPONSE_TEMPLATE = `⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜
+const discordResponseBody = `⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜
 
 **Schedule results for %v**
 
@@ -128,7 +128,7 @@ func DiscordRequest(person Person, manager *Manager) error {
 	log.Println("[INFO]: sending discord header")
 
 	// Send the header message
-	_, err = config.Session.ChannelMessageSend(channel.ID, fmt.Sprintf(REQUEST_TEMPLATE_HEADER, manager.config.Title))
+	_, err = config.Session.ChannelMessageSend(channel.ID, fmt.Sprintf(discordRequestHeader, manager.config.Title))
 	if err != nil {
 		return err
 	}
@@ -144,7 +144,7 @@ func DiscordRequest(person Person, manager *Manager) error {
 		}
 
 		// Send a DM
-		m, err := config.Session.ChannelMessageSend(channel.ID, fmt.Sprintf(REQUEST_TEMPLATE_BODY, emojiDates))
+		m, err := config.Session.ChannelMessageSend(channel.ID, fmt.Sprintf(discordRequestBody, emojiDates))
 		if err != nil {
 			return err
 		}
@@ -321,8 +321,8 @@ func DiscordResponse(person Person, manager *Manager, days []day, unknowns []str
 		return err
 	}
 
-	// Send a message to the user
-	str := fmt.Sprintf(RESPONSE_TEMPLATE,
+	// Format the message to be sent
+	str := fmt.Sprintf(discordResponseBody,
 		manager.config.Title,
 		available,
 		len(manager.config.Persons),
@@ -330,12 +330,14 @@ func DiscordResponse(person Person, manager *Manager, days []day, unknowns []str
 		unknownPrefix,
 		unknownsString,
 	)
+
+	log.Printf("[INFO]: sending response message\n%v\n", str)
+
+	// Send a message to the user
 	_, err = config.Session.ChannelMessageSend(channel.ID, str)
 	if err != nil {
 		return err
 	}
-
-	log.Printf("[INFO]: sending response message\n%v\n", str)
 
 	return nil
 }

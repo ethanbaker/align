@@ -41,6 +41,8 @@ func (m *Manager) OnContact() {
 
 	// For each person
 	for _, person := range m.config.Persons {
+		log.Printf("[INFO]: starting contact for '%v'\n", person.Name)
+
 		// Find the person's request method
 		request, ok := requests[person.RequestMethod]
 		if !ok {
@@ -163,6 +165,7 @@ func (m *Manager) generateAvailability() map[string]bool {
 // Create and initialize a new manager
 func CreateManager(name string, path string, options Options) (*Manager, error) {
 	var manager Manager
+	manager.Name = name
 
 	log.Println("[INFO]: reading yaml config file")
 
@@ -228,6 +231,7 @@ func CreateManager(name string, path string, options Options) (*Manager, error) 
 			if m.Name == name {
 				log.Printf("[INFO]: returning existing manager with name %v", m.Name)
 
+				manager = m
 				manager.db = db
 			}
 		}
@@ -237,8 +241,6 @@ func CreateManager(name string, path string, options Options) (*Manager, error) 
 			manager.db = db
 			db.Save(&manager)
 		}
-	} else {
-		manager.Name = name
 	}
 
 	// Populate manager fields

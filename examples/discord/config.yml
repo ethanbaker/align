@@ -1,0 +1,18 @@
+settings:
+  title: "Group Meetup"        # Title of the event
+  interval: 7                  # How many days to ask for availability
+  offset: 2                    # How many days past the contact time to ask for availability
+  timezone: "America/New_York" # Timezone that cron strings are based on
+  contact_time: "0 10 * * 0"   # Contact time cron string (Sunday at 10:00 AM)
+  deadline_time: "0 10 * * 1"  # Deadline time cron string (Monday at 10:00 AM)
+
+persons:
+  - name: "Person 1"   	       # Name of the person
+    request_method: "discord"  # Method to request information from
+    response_method: "discord" # Method to respond with information
+    id: "PERSON_1_DISCORD_ID"  # Identifiying string for the person (Discord ID, Telegram ID, etc.)
+
+  - name: "Person 2"
+    request_method: "discord"
+    response_method: "discord"
+    id: "PERSON_2_DISCORD_ID"
