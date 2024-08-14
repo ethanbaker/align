@@ -4,11 +4,35 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"gorm.io/gorm"
 )
+
+/* ---- TYPES ---- */
+
+// DiscordConfig holds all necessary fields for discord request/response functions to run successfully
+type DiscordConfig struct {
+	Session *discordgo.Session
+}
+
+type discordEntry struct {
+	gorm.Model
+
+	Person    string // The person's name this entry is related to
+	Index     int    // The index of this entry
+	ChannelID string // The discord channel ID this entry represents
+	MessageID string // The discord message ID this entry represents
+
+	// The manager this entry is related to
+	Manager   *Manager
+	ManagerID *int
+}
+
+/* ---- GLOBALS ---- */
+
+var discordEntries []discordEntry
 
 var emojis = []string{
 	"1️⃣",
@@ -20,41 +44,58 @@ var emojis = []string{
 	"7️⃣",
 }
 
-const REQUEST_TEMPLATE_HEADER = `⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜
+const discordRequestHeader = `⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜
 
 **Schedule for %v**`
 
-const REQUEST_TEMPLATE_BODY = `%v
+const discordRequestBody = `%v
 ❌ - None
 
 React with the corresponding emoji for dates you are free
 `
 
-const RESPONSE_TEMPLATE = `⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜
+const discordResponseBody = `⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜
 
 **Schedule results for %v**
-%v
+
+%v/%v people available
 
 %v%v%v
 ⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜
 `
 
-// DiscordConfig holds all necessary fields for discord request/response functions to run successfully
-type DiscordConfig struct {
-	Session *discordgo.Session
-}
+/* ---- FUNCTIONS ---- */
 
 // Initialize a discord config
 func InitDiscord(manager *Manager, s *discordgo.Session) {
-	manager.ModuleConfigs["discord"] = DiscordConfig{
+	log.Println("[INFO]: initializing discord config")
+
+	manager.moduleConfigs["discord"] = DiscordConfig{
 		Session: s,
+	}
+
+	if !manager.options.UseSQL {
+		return
+	}
+
+	// If using SQL, populate discord entries
+	if !manager.db.Migrator().HasTable(&discordEntry{}) {
+		if err := manager.db.AutoMigrate(&discordEntry{}); err != nil {
+			log.Fatalf("[ERR]: cannot migrate discordEntry object (err: %v)\n", err)
+		}
+	}
+
+	if err := manager.db.Model(&discordEntry{}).Find(&discordEntries).Error; err != nil {
+		log.Fatalf("[ERR]: cannot read discord entries from database (err: %v)\n", err)
 	}
 }
 
-// Request an availability schedule using discord credentials
+// Request an availability schedule using discord
 func DiscordRequest(person Person, manager *Manager) error {
+	log.Println("[INFO]: loading discord config")
+
 	// Attempt to load the discord config
-	config, ok := manager.ModuleConfigs["discord"].(DiscordConfig)
+	config, ok := manager.moduleConfigs["discord"].(DiscordConfig)
 	if !ok {
 		return fmt.Errorf("discord config has not been initialized")
 	}
@@ -64,17 +105,19 @@ func DiscordRequest(person Person, manager *Manager) error {
 		return fmt.Errorf("discord session is nil")
 	}
 
-	// Get a basic availability
-	availability := manager.GenerateAvailability()
+	log.Println("[INFO]: generating availability dates")
 
-	// Generate dates
-	allDates := []string{}
+	// Generate all dates in the availability map
+	year, month, day := time.Now().In(manager.loc).Date()
+	today := time.Date(year, month, day, 0, 0, 0, 0, manager.loc)
 
-	today := time.Now().In(manager.Loc).Truncate(24 * time.Hour)
-	for day := manager.Config.Offset; day < manager.Config.Interval+manager.Config.Offset; day++ {
+	dates := []string{}
+	for day := manager.config.Offset; day < manager.config.Interval+manager.config.Offset; day++ {
 		timestamp := today.Add(time.Duration(DAY_DURATION * day)).Format(TIME_FORMAT)
-		allDates = append(allDates, timestamp)
+		dates = append(dates, timestamp)
 	}
+
+	log.Printf("[INFO]: opening discord channel to id '%v'\n", person.ID)
 
 	// Create a private channel to DM the user
 	channel, err := config.Session.UserChannelCreate(person.ID)
@@ -82,37 +125,32 @@ func DiscordRequest(person Person, manager *Manager) error {
 		return err
 	}
 
+	log.Println("[INFO]: sending discord header")
+
 	// Send the header message
-	_, err = config.Session.ChannelMessageSend(channel.ID, fmt.Sprintf(REQUEST_TEMPLATE_HEADER, manager.Config.Title))
+	_, err = config.Session.ChannelMessageSend(channel.ID, fmt.Sprintf(discordRequestHeader, manager.config.Title))
 	if err != nil {
 		return err
 	}
 
-	// Used to determine when the messages are done
-	threads := 0
-	completedThreads := 0
+	log.Println("[INFO]: sending discord messages")
 
 	// Send messages
-	for i := 0; i < manager.Config.Interval; i += 7 {
-		threads++
-
-		dates := []string{}
-
+	for i := 0; i*7 < manager.config.Interval; i++ {
 		// Get a list of dates and the emoji - date paris for the message
 		emojiDates := ""
-		for j := 0; j < 7 && i+j < manager.Config.Interval; j++ {
-			emojiDates += fmt.Sprintf("%v - %v\n", emojis[j], allDates[i+j])
-			dates = append(dates, allDates[i+j])
+		for j := 0; j < 7 && i*7+j < manager.config.Interval; j++ {
+			emojiDates += fmt.Sprintf("%v - %v\n", emojis[j], dates[i*7+j])
 		}
 
 		// Send a DM
-		m, err := config.Session.ChannelMessageSend(channel.ID, fmt.Sprintf(REQUEST_TEMPLATE_BODY, emojiDates))
+		m, err := config.Session.ChannelMessageSend(channel.ID, fmt.Sprintf(discordRequestBody, emojiDates))
 		if err != nil {
 			return err
 		}
 
 		// React to the DM with the emojis so the user can easily react
-		for j := 0; j < len(emojis); j++ {
+		for j := 0; j < len(emojis) && i*7+j < manager.config.Interval; j++ {
 			if err = config.Session.MessageReactionAdd(channel.ID, m.ID, emojis[j]); err != nil {
 				return err
 			}
@@ -122,57 +160,32 @@ func DiscordRequest(person Person, manager *Manager) error {
 			return err
 		}
 
-		// Mutex for editing availability
-		edit := sync.Mutex{}
+		// Add this message as a recorded entry
+		entry := discordEntry{
+			Person:    person.Name,
+			Index:     i,
+			ChannelID: channel.ID,
+			MessageID: m.ID,
+			Manager:   manager,
+		}
+		discordEntries = append(discordEntries, entry)
 
-		// Repeatedly wait for the user to react to this message
-		go func() {
-			for j := 0; !manager.Stop; j = (j + 1) % 7 {
-				// Get message reactions for a given emoji
-				users, err := config.Session.MessageReactions(channel.ID, m.ID, emojis[j], 2, "", "")
-				if err != nil {
-					log.Printf("[ERR]: error getting message reactions from user '%v' (err: %v)\n", person.Name, err)
-				}
-
-				// Set availability
-				edit.Lock()
-				availability[dates[j]] = len(users) == 2
-				edit.Unlock()
-
-				// If the user said no dates then reset all and break
-				users, err = config.Session.MessageReactions(channel.ID, m.ID, "❌", 2, "", "")
-				if err != nil {
-					log.Printf("[ERR]: error getting message reactions from user '%v' (err: %v)\n", person.Name, err)
-				}
-				if len(users) == 2 {
-					// Reset all availability
-					for k := range availability {
-						edit.Lock()
-						availability[k] = false
-						edit.Unlock()
-					}
-					break
-				}
-			}
-			// On stop, update availability safely
-			manager.Edit.Lock()
-
-			manager.Availability[person.Name] = availability
-			completedThreads++
-			if completedThreads == threads {
-				manager.Completed++
-			}
-
-			manager.Edit.Unlock()
-		}()
+		// If using SQL, add to SQL database
+		if manager.options.UseSQL {
+			log.Println("[INFO]: adding discord entry to SQL")
+			manager.db.Save(&entry)
+		}
 	}
 
 	return nil
 }
 
-func DiscordResponse(person Person, manager *Manager, days []Day, unknowns []string, available int) error {
+// Read a response for availability using discord
+func DiscordGather(person Person, manager *Manager) error {
+	log.Println("[INFO]: loading discord config")
+
 	// Attempt to load the discord config
-	config, ok := manager.ModuleConfigs["discord"].(DiscordConfig)
+	config, ok := manager.moduleConfigs["discord"].(DiscordConfig)
 	if !ok {
 		return fmt.Errorf("discord config has not been initialized")
 	}
@@ -182,8 +195,108 @@ func DiscordResponse(person Person, manager *Manager, days []Day, unknowns []str
 		return fmt.Errorf("discord session is nil")
 	}
 
-	// Calculate fraction
-	fraction := fmt.Sprintf("%v/%v people available", available, len(manager.Config.Persons))
+	log.Println("[INFO]: generating availability dates")
+
+	// Generate all dates in the availability map
+	year, month, day := time.Now().In(manager.loc).Date()
+	today := time.Date(year, month, day, 0, 0, 0, 0, manager.loc)
+
+	dates := []string{}
+	for day := manager.config.Offset; day < manager.config.Interval+manager.config.Offset; day++ {
+		timestamp := today.Add(time.Duration(DAY_DURATION * day)).Format(TIME_FORMAT)
+		dates = append(dates, timestamp)
+	}
+
+	// Generate an availability for the person
+	availability := manager.generateAvailability()
+
+	log.Printf("[INFO]: collecting discord entries for '%v'", person.Name)
+
+	// Filter for entries for this specific person
+	var entries []discordEntry
+	for i := 0; i < len(discordEntries); i++ {
+		// On matching entry, add to local array and remove from global
+		if discordEntries[i].Person == person.Name {
+			entries = append(entries, discordEntries[i])
+
+			// If using SQL, remove from SQL database
+			if manager.options.UseSQL {
+				manager.db.Delete(&discordEntries[i])
+			}
+
+			discordEntries = append(discordEntries[:i], discordEntries[i+1:]...)
+			i--
+		}
+	}
+
+	// Sort entries based on index
+	for i := 1; i < len(entries); i++ {
+		cur := entries[i]
+		j := i - 1
+
+		for j >= 0 && entries[j].Index > cur.Index {
+			entries[j+1] = entries[j]
+			j--
+		}
+		entries[j+1] = cur
+	}
+
+	for i, entry := range entries {
+		log.Printf("[INFO]: determining reactions for '%v' with entry number '%v'\n", entry.Person, entry.Index)
+
+		// Check if the user responded with an X
+		users, err := config.Session.MessageReactions(entry.ChannelID, entry.MessageID, "❌", 2, "", "")
+		if err != nil {
+			log.Printf("[ERR]: error getting message reactions from user '%v' (err: %v)\n", person.Name, err)
+		}
+
+		// If the user responded with an X, skip this entry (they're not available)
+		if len(users) == 2 {
+			continue
+		}
+
+		// Check for reactions to individual dates
+		for j := 0; j < len(emojis) && i*7+j < manager.config.Interval; j++ {
+			// Get message reactions for a given emoji
+			users, err := config.Session.MessageReactions(entry.ChannelID, entry.MessageID, emojis[j], 2, "", "")
+			if err != nil {
+				log.Printf("[ERR]: error getting message reactions from user '%v' (err: %v)\n", person.Name, err)
+			}
+
+			// Set availability based on the reaction count
+			availability[dates[i*7+j]] = len(users) == 2
+		}
+	}
+
+	// Log the user's availability
+	for date, status := range availability {
+		log.Printf("[INFO]: user '%v' availability status on %v is %v\n", person.Name, date, status)
+	}
+
+	// Update the user's availability in the manager
+	manager.edit.Lock()
+	manager.availability[person.Name] = availability
+	manager.edit.Unlock()
+
+	return nil
+}
+
+// Send a user a response summary on discord
+func DiscordResponse(person Person, manager *Manager, days []day, unknowns []string, available int) error {
+	log.Println("[INFO]: loading discord config")
+
+	// Attempt to load the discord config
+	config, ok := manager.moduleConfigs["discord"].(DiscordConfig)
+	if !ok {
+		return fmt.Errorf("discord config has not been initialized")
+	}
+
+	// Check if the session is valid
+	if config.Session == nil {
+		return fmt.Errorf("discord session is nil")
+	}
+
+	log.Println("[INFO]: building response string")
 
 	// Concatenate days to a single string
 	dayString := ""
@@ -199,7 +312,7 @@ func DiscordResponse(person Person, manager *Manager, days []Day, unknowns []str
 
 	unknownPrefix := ""
 	if len(unknowns) > 0 {
-		unknownPrefix = "No responses from:\n"
+		unknownPrefix = "\nNo responses from:\n"
 	}
 
 	// Create a private channel to DM the user
@@ -208,8 +321,20 @@ func DiscordResponse(person Person, manager *Manager, days []Day, unknowns []str
 		return err
 	}
 
+	// Format the message to be sent
+	str := fmt.Sprintf(discordResponseBody,
+		manager.config.Title,
+		available,
+		len(manager.config.Persons),
+		dayString,
+		unknownPrefix,
+		unknownsString,
+	)
+
+	log.Printf("[INFO]: sending response message\n%v\n", str)
+
 	// Send a message to the user
-	_, err = config.Session.ChannelMessageSend(channel.ID, fmt.Sprintf(RESPONSE_TEMPLATE, manager.Config.Title, fraction, dayString, unknownPrefix, unknownsString))
+	_, err = config.Session.ChannelMessageSend(channel.ID, str)
 	if err != nil {
 		return err
 	}

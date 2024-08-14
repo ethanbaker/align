@@ -17,7 +17,7 @@ Here are different preset "variables" that you can search and replace in this te
 [![Go Report Card](https://goreportcard.com/badge/github.com/ethanbaker/align)](https://goreportcard.com/report/github.com/ethanbaker/align)
 
 <!--NEED GITHUB WORKFLOW [![Go Coverage](https://github.com/ethanbaker/align/wiki/coverage.svg)](https://raw.githack.com/wiki/ethanbaker/align/coverage.html)-->
-![0.1.0](https://img.shields.io/badge/status-0.1.0-red)
+![1.0.0](https://img.shields.io/badge/status-1.0.0-red)
 [![Contributors][contributors-shield]][contributors-url]
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
@@ -25,12 +25,11 @@ Here are different preset "variables" that you can search and replace in this te
 [![License][license-shield]][license-url]
 [![LinkedIn][linkedin-shield]][linkedin-url]
 
-
 <!-- PROJECT LOGO -->
 <br><br><br>
 <div align="center">
   <a href="https://github.com/ethanbaker/align">
-    <img src="path_to_logo" alt="Logo" width="80" height="80">
+    <img src="./docs/logo.png" alt="Logo" width="80" height="80">
   </a>
 
   <h3 align="center">Align</h3>
@@ -51,13 +50,7 @@ Here are different preset "variables" that you can search and replace in this te
         <li><a href="#built-with">Built With</a></li>
       </ul>
     </li>
-    <li>
-      <a href="#getting-started">Getting Started</a>
-      <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#installation">Installation</a></li>
-      </ul>
-    </li>
+    <li><a href="#getting-started">Getting Started</a></li>
     <li><a href="#usage">Usage</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
@@ -71,12 +64,25 @@ Here are different preset "variables" that you can search and replace in this te
 <!-- ABOUT -->
 ## About
 
+Align is a scheduling tool that allows users to schedule events with other users. It is
+designed to be modular, so that users can easily receive schedule reminders and updates
+through different platforms. Align's uses a configuration file combined with 
+user-controlled sessions to seamlessly integrate with your own custom tools.
+
+Currently, align allows you to contact users through Discord or Telegram. More outreach
+methods are planned in the future!
+
+Check out align's example usages [here](https://github.com/ethanbaker/align/tree/main/examples).
+
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 
 ### Built With
 
 * [Golang](https://go.dev)
+* [Cron](https://en.wikipedia.org/wiki/Cron)
+* [Discord Go](https://github.com/bwmarrin/discordgo)
+* [Telegram-Bot-API](https://github.com/go-telegram-bot-api/telegram-bot-api)
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -84,11 +90,14 @@ Here are different preset "variables" that you can search and replace in this te
 <!-- GETTING STARTED -->
 ## Getting Started
 
+To get started with align, you can follow one of the ready-made examples [here](https://github.com/ethanbaker/align/tree/main/examples).
 
-### Prerequisites
+The general gist of align is as follows:
+* You have a project that utilizes a session (Discord, Telegram, etc)
+* You have an align configuration file
+* You initialize an align manager using your provided config file that attaches itself to the running session
 
-
-### Installation
+In doing this, you can attach align ontop of other programs, such as a ready-made Discord/Telegram bot.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -96,13 +105,25 @@ Here are different preset "variables" that you can search and replace in this te
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-_For more examples, please refer to the [documentation][documentation-url]._
+Examples can be found [here](https://github.com/ethanbaker/align/tree/main/examples).
+Existing examples include:
+* [Discord Implementation](https://github.com/ethanbaker/align/tree/main/examples/discord). 
+* [Telegram Implementation](https://github.com/ethanbaker/align/tree/main/examples/telegram).
+* [Multi-Module Implementation](https://github.com/ethanbaker/align/tree/main/examples/all).
+
+These examples show how align can be attached to already-running sessions with an example
+configuration file.
+
+_For more details, please refer to the [documentation][documentation-url]._
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 
 <!-- ROADMAP -->
 ## Roadmap
+
+- [ ] Allow for different request/response methods
+- [ ] Add SMS outreach method
 
 See the [open issues][issues-url] for a full list of proposed features (and known issues).
 
@@ -136,7 +157,7 @@ You can follow these steps below to create a pull request:
 <!-- LICENSE -->
 ## License
 
-You can find more information in the [LICENSE][license-url] file.
+This project uses the Apache 2.0 License. You can find more information in the [LICENSE][license-url] file.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -154,9 +175,7 @@ Project Link: [https://github.com/ethanbaker/align][project-url]
 <!-- ACKNOWLEDGMENTS -->
 ## Acknowledgments
 
-* []()
-* []()
-* []()
+* All the friendgroups out there who struggle to connect regularly!
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 

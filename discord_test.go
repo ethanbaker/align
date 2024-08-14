@@ -12,13 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const path = "./config/test_config.yml"
-
 func TestDiscord(t *testing.T) {
 	require := require.New(t)
 
 	// Read in discord credentials
-	env, err := godotenv.Read("./config/modules/.env.discord")
+	env, err := godotenv.Read("./config/discord/.env")
 	require.Nil(err)
 
 	// Start a discordgo session
@@ -29,7 +27,9 @@ func TestDiscord(t *testing.T) {
 	require.Nil(err)
 
 	// Create a new manager
-	manager, err := align.NewManager(path)
+	manager, err := align.CreateManager("test-discord", "./config/discord/config.yml", align.Options{
+		UseSQL: false,
+	})
 	require.Nil(err)
 
 	// Initialize the discord module
@@ -49,4 +49,60 @@ func TestDiscord(t *testing.T) {
 	sc = make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
+}
+
+func TestDiscordPreSQL(t *testing.T) {
+	require := require.New(t)
+
+	// Read in discord credentials
+	env, err := godotenv.Read("./config/discord/.env")
+	require.Nil(err)
+
+	// Start a discordgo session
+	session, err := discordgo.New("Bot " + env["DISCORD_TOKEN"])
+	require.Nil(err)
+
+	err = session.Open()
+	require.Nil(err)
+
+	// Create a new manager
+	manager, err := align.CreateManager("test-discord", "./config/discord/config.yml", align.Options{
+		UseSQL: true,
+	})
+	require.Nil(err)
+
+	// Initialize the discord module
+	align.InitDiscord(manager, session)
+
+	// Perform the contact
+	manager.OnContact()
+
+	// Assume power loss/program stops here
+}
+
+func TestDiscordPostSQL(t *testing.T) {
+	require := require.New(t)
+
+	// Read in discord credentials
+	env, err := godotenv.Read("./config/discord/.env")
+	require.Nil(err)
+
+	// Start a discordgo session
+	session, err := discordgo.New("Bot " + env["DISCORD_TOKEN"])
+	require.Nil(err)
+
+	err = session.Open()
+	require.Nil(err)
+
+	// Create a new manager
+	manager, err := align.CreateManager("test-discord", "./config/discord/config.yml", align.Options{
+		UseSQL: true,
+	})
+	require.Nil(err)
+
+	// Initialize the discord module
+	align.InitDiscord(manager, session)
+
+	// Send response with on completion
+	manager.OnCompletion()
 }
