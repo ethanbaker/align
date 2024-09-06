@@ -34,7 +34,7 @@ type telegramEntry struct {
 
 /* ---- GLOBALS ---- */
 
-var telegramEntries []telegramEntry
+var telegramEntries []*telegramEntry
 
 const telegramRequestHeader = `**Schedule for %v**
 
@@ -207,12 +207,14 @@ func TelegramRequest(person Person, manager *Manager) error {
 			MessageID: int(m.Chat.ID),
 			Manager:   manager,
 		}
-		telegramEntries = append(telegramEntries, entry)
+		telegramEntries = append(telegramEntries, &entry)
 
 		// If using SQL, add to SQL database
 		if manager.options.UseSQL {
 			log.Println("[INFO]: adding discord entry to SQL")
-			manager.db.Save(&entry)
+			if err := manager.db.Save(&entry).Error; err != nil {
+				log.Printf("[ERR]: error saving telegram entry to SQL (err: %v)\n", err)
+			}
 		}
 	}
 
@@ -245,7 +247,7 @@ func TelegramGather(person Person, manager *Manager) error {
 	log.Printf("[INFO]: collecting telegram entries for '%v'", person.Name)
 
 	// Filter for entries for this specific person
-	var entries []telegramEntry
+	var entries []*telegramEntry
 	for i := 0; i < len(telegramEntries); i++ {
 		// On matching entry, add to local array and remove from global
 		if telegramEntries[i].Person == person.Name {
@@ -253,7 +255,9 @@ func TelegramGather(person Person, manager *Manager) error {
 
 			// If using SQL, remove from SQL database
 			if manager.options.UseSQL {
-				manager.db.Delete(&telegramEntries[i])
+				if err := manager.db.Delete(&telegramEntries[i]).Error; err != nil {
+					log.Printf("[ERR]: error deleting telegram entry from SQL (err: %v)\n", err)
+				}
 			}
 
 			telegramEntries = append(telegramEntries[:i], telegramEntries[i+1:]...)
