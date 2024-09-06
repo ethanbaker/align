@@ -32,7 +32,7 @@ type discordEntry struct {
 
 /* ---- GLOBALS ---- */
 
-var discordEntries []discordEntry
+var discordEntries []*discordEntry
 
 var emojis = []string{
 	"1️⃣",
@@ -85,7 +85,7 @@ func InitDiscord(manager *Manager, s *discordgo.Session) {
 		}
 	}
 
-	if err := manager.db.Model(&discordEntry{}).Find(&discordEntries).Error; err != nil {
+	if err := manager.db.Model(&discordEntry{}).Where("id = ?", fmt.Sprint(manager.ID)).Find(&discordEntries).Error; err != nil {
 		log.Fatalf("[ERR]: cannot read discord entries from database (err: %v)\n", err)
 	}
 }
@@ -168,12 +168,14 @@ func DiscordRequest(person Person, manager *Manager) error {
 			MessageID: m.ID,
 			Manager:   manager,
 		}
-		discordEntries = append(discordEntries, entry)
+		discordEntries = append(discordEntries, &entry)
 
 		// If using SQL, add to SQL database
 		if manager.options.UseSQL {
 			log.Println("[INFO]: adding discord entry to SQL")
-			manager.db.Save(&entry)
+			if err := manager.db.Save(&entry).Error; err != nil {
+				log.Printf("[ERR]: error saving discord entry to SQL (err: %v)\n", err)
+			}
 		}
 	}
 
@@ -213,7 +215,7 @@ func DiscordGather(person Person, manager *Manager) error {
 	log.Printf("[INFO]: collecting discord entries for '%v'", person.Name)
 
 	// Filter for entries for this specific person
-	var entries []discordEntry
+	var entries []*discordEntry
 	for i := 0; i < len(discordEntries); i++ {
 		// On matching entry, add to local array and remove from global
 		if discordEntries[i].Person == person.Name {
@@ -221,7 +223,9 @@ func DiscordGather(person Person, manager *Manager) error {
 
 			// If using SQL, remove from SQL database
 			if manager.options.UseSQL {
-				manager.db.Delete(&discordEntries[i])
+				if err := manager.db.Delete(&discordEntries[i]).Error; err != nil {
+					log.Printf("[ERR]: error deleting discord entry from SQL (err: %v)\n", err)
+				}
 			}
 
 			discordEntries = append(discordEntries[:i], discordEntries[i+1:]...)
@@ -242,7 +246,7 @@ func DiscordGather(person Person, manager *Manager) error {
 	}
 
 	for i, entry := range entries {
-		log.Printf("[INFO]: determining reactions for '%v' with entry number '%v'\n", entry.Person, entry.Index)
+		log.Printf("[INFO]: determining reactions for '%v' with entry number '%v' and message id '%v'\n", entry.Person, entry.Index, entry.MessageID)
 
 		// Check if the user responded with an X
 		users, err := config.Session.MessageReactions(entry.ChannelID, entry.MessageID, "❌", 2, "", "")
