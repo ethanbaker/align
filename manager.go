@@ -1,6 +1,7 @@
 package align
 
 import (
+	"database/sql"
 	"log"
 	"os"
 	"strings"
@@ -23,7 +24,8 @@ const TIME_FORMAT = "Monday 01/02"
 // Manager struct represents a top level manager class
 type Manager struct {
 	gorm.Model
-	Name string `gorm:"uniqueIndex,length:256"` // The name identifier for the manager
+	Name       string       `gorm:"uniqueIndex,length:256"` // The name identifier for the manager
+	ContactDay sql.NullTime // The day persons are contacted
 
 	availability  map[string]map[string]bool `gorm:"-"` // Persons' availabilities
 	config        *Config                    `gorm:"-"` // Base align config
@@ -38,6 +40,16 @@ type Manager struct {
 // OnContact contacts the persons listed in the config using their preferred method
 func (m *Manager) OnContact() {
 	log.Printf("[INFO]: starting contact\n")
+
+	// Update the contact day
+	now := time.Now().In(m.loc)
+	m.ContactDay.Time = now
+	m.ContactDay.Valid = true
+
+	if err := m.db.Save(m).Error; err != nil {
+		log.Printf("[ERR]: error saving contact day to SQL, stopping (err: %v)\n", err)
+		return
+	}
 
 	// For each person
 	for _, person := range m.config.Persons {
@@ -150,7 +162,7 @@ func (m *Manager) generateAvailability() map[string]bool {
 	availability := map[string]bool{}
 
 	// Get the current date
-	year, month, day := time.Now().In(m.loc).Date()
+	year, month, day := m.ContactDay.Time.Date()
 	today := time.Date(year, month, day, 0, 0, 0, 0, m.loc)
 
 	for day := m.config.Offset; day < m.config.Interval+m.config.Offset; day++ {
@@ -166,6 +178,7 @@ func (m *Manager) generateAvailability() map[string]bool {
 func CreateManager(name string, path string, options Options) (*Manager, error) {
 	var manager Manager
 	manager.Name = name
+	manager.ContactDay = sql.NullTime{Valid: false}
 
 	log.Println("[INFO]: reading yaml config file")
 

@@ -108,7 +108,7 @@ func DiscordRequest(person Person, manager *Manager) error {
 	log.Println("[INFO]: generating availability dates")
 
 	// Generate all dates in the availability map
-	year, month, day := time.Now().In(manager.loc).Date()
+	year, month, day := manager.ContactDay.Time.Date()
 	today := time.Date(year, month, day, 0, 0, 0, 0, manager.loc)
 
 	dates := []string{}
@@ -200,7 +200,7 @@ func DiscordGather(person Person, manager *Manager) error {
 	log.Println("[INFO]: generating availability dates")
 
 	// Generate all dates in the availability map
-	year, month, day := time.Now().In(manager.loc).Date()
+	year, month, day := manager.ContactDay.Time.Date()
 	today := time.Date(year, month, day, 0, 0, 0, 0, manager.loc)
 
 	dates := []string{}
