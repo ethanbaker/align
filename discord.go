@@ -85,7 +85,7 @@ func InitDiscord(manager *Manager, s *discordgo.Session) {
 		}
 	}
 
-	if err := manager.db.Model(&discordEntry{}).Where("id = ?", fmt.Sprint(manager.ID)).Find(&discordEntries).Error; err != nil {
+	if err := manager.db.Model(&discordEntry{}).Where("manager_id = ?", fmt.Sprint(manager.ID)).Find(&discordEntries).Error; err != nil {
 		log.Fatalf("[ERR]: cannot read discord entries from database (err: %v)\n", err)
 	}
 }
