@@ -17,7 +17,7 @@ Here are different preset "variables" that you can search and replace in this te
 [![Go Report Card](https://goreportcard.com/badge/github.com/ethanbaker/align)](https://goreportcard.com/report/github.com/ethanbaker/align)
 
 <!--NEED GITHUB WORKFLOW [![Go Coverage](https://github.com/ethanbaker/align/wiki/coverage.svg)](https://raw.githack.com/wiki/ethanbaker/align/coverage.html)-->
-![1.0.0](https://img.shields.io/badge/status-1.0.0-red)
+![1.1.3](https://img.shields.io/badge/status-1.1.3-red)
 [![Contributors][contributors-shield]][contributors-url]
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]

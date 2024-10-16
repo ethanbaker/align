@@ -65,7 +65,7 @@ func InitTelegram(manager *Manager, s *telegram.BotAPI) {
 			}
 		}
 
-		if err := manager.db.Model(&telegramEntry{}).Find(&telegramEntries).Error; err != nil {
+		if err := manager.db.Model(&telegramEntry{}).Where("manager_id = ?", fmt.Sprint(manager.ID)).Find(&telegramEntries).Error; err != nil {
 			log.Fatalf("[ERR]: cannot read telegram entries from database (err: %v)\n", err)
 		}
 
