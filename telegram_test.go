@@ -16,7 +16,7 @@ func TestTelegram(t *testing.T) {
 	require := require.New(t)
 
 	// Read in telegram credentials
-	env, err := godotenv.Read("./config/telegram/.env.telegram")
+	env, err := godotenv.Read("./testing/.env.telegram")
 	require.Nil(err)
 
 	// Start a telegram session
@@ -25,7 +25,7 @@ func TestTelegram(t *testing.T) {
 	session.Debug = true
 
 	// Create a new manager
-	manager, err := align.CreateManager("test-telegram", "./config/telegram/config.yml", align.Options{
+	manager, err := align.CreateManager("test-telegram", "./testing/config.yml", align.Options{
 		UseSQL: false,
 	})
 	require.Nil(err)
@@ -53,7 +53,7 @@ func TestTelegramPreSQL(t *testing.T) {
 	require := require.New(t)
 
 	// Read in telegram credentials
-	env, err := godotenv.Read("./config/telegram/.env")
+	env, err := godotenv.Read("./testing/.env")
 	require.Nil(err)
 
 	// Start a telegram session
@@ -62,7 +62,7 @@ func TestTelegramPreSQL(t *testing.T) {
 	session.Debug = true
 
 	// Create a new manager
-	manager, err := align.CreateManager("test-telegram", "./config/telegram/config.yml", align.Options{
+	manager, err := align.CreateManager("test-telegram", "./testing/config.yml", align.Options{
 		UseSQL: true,
 	})
 	require.Nil(err)
@@ -73,6 +73,11 @@ func TestTelegramPreSQL(t *testing.T) {
 	// Perform the contact
 	manager.OnContact()
 
+	/*
+		sc := make(chan os.Signal, 1)
+		signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+		<-sc
+	*/
 	// Assume power loss/program stops here
 }
 
@@ -80,7 +85,7 @@ func TestTelegramPostSQL(t *testing.T) {
 	require := require.New(t)
 
 	// Read in telegram credentials
-	env, err := godotenv.Read("./config/telegram/.env")
+	env, err := godotenv.Read("./testing/.env")
 	require.Nil(err)
 
 	// Start a telegram session
@@ -89,7 +94,7 @@ func TestTelegramPostSQL(t *testing.T) {
 	session.Debug = true
 
 	// Create a new manager
-	manager, err := align.CreateManager("test-telegram", "./config/telegram/config.yml", align.Options{
+	manager, err := align.CreateManager("test-telegram", "./testing/config.yml", align.Options{
 		UseSQL: true,
 	})
 	require.Nil(err)
