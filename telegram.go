@@ -125,6 +125,11 @@ func InitTelegram(manager *Manager, s *telegram.BotAPI) {
 				}
 			}
 
+			if entry == nil {
+				log.Printf("[WARN]: cannot find telegram entry for poll '%v'\n", poll.ID)
+				continue
+			}
+
 			// Find the associated person from the entry
 			for _, p := range manager.config.Persons {
 				if p.Name == entry.Person {
@@ -137,11 +142,6 @@ func InitTelegram(manager *Manager, s *telegram.BotAPI) {
 			availability, ok := manager.availability[entry.Person]
 			if !ok {
 				log.Printf("[WARN]: cannot get availability from person '%v'\n", entry.Person)
-				break
-			}
-
-			// If no availability is found, continue
-			if availability == nil {
 				continue
 			}
 

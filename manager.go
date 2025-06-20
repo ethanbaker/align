@@ -157,7 +157,7 @@ func (m *Manager) OnCompletion() {
 	log.Println("[INFO]: completion was successful")
 }
 
-// Generate a base availabiltiy map
+// Generate a base availability map
 func (m *Manager) generateAvailability() AvailabilityMap {
 	availability := AvailabilityMap{}
 
