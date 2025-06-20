@@ -1,6 +1,8 @@
 package align
 
 import (
+	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
@@ -11,9 +13,23 @@ import (
 	"gorm.io/gorm"
 )
 
+type AvailabilityMap map[string]bool
+
+func (m *AvailabilityMap) Scan(value interface{}) error {
+	bytes, ok := value.([]byte)
+	if !ok {
+		return fmt.Errorf("failed to scan AvailabilityMap, expected []byte, got %T", value)
+	}
+	return json.Unmarshal(bytes, m)
+}
+
+func (m AvailabilityMap) Value() (driver.Value, error) {
+	return json.Marshal(m)
+}
+
 /** ---- TYPES ---- */
 
-// TelegramConfig holds all necessary fields for discord request/response functions to run successfully
+// TelegramConfig holds all necessary fields for telegram request/response functions to run successfully
 type TelegramConfig struct {
 	Session *telegram.BotAPI
 	Updates *telegram.UpdatesChannel
@@ -22,10 +38,11 @@ type TelegramConfig struct {
 type telegramEntry struct {
 	gorm.Model
 
-	Person    string // The person's name this entry is related to
-	Index     int    // The index of this entry
-	PollID    string // The telegram poll ID to get results from
-	MessageID int    // The telegram message ID to get results from
+	Person       string          // The person's name this entry is related to
+	Index        int             // The index of this entry
+	PollID       string          // The telegram poll ID to get results from
+	MessageID    int             // The telegram message ID to get results from
+	Availability AvailabilityMap `gorm:"type:json"` // The availability of the person in this entry
 
 	// The manager this entry is related to
 	Manager   *Manager
@@ -71,9 +88,15 @@ func InitTelegram(manager *Manager, s *telegram.BotAPI) {
 
 		// Generate a template availability for each person in the entries
 		for _, entry := range telegramEntries {
-			_, ok := manager.availability[entry.Person]
-			if !ok {
+			// Generate a default availability for the person if it does not exist
+			if _, ok := manager.availability[entry.Person]; !ok {
+				log.Printf("[INFO]: generating default availability for person '%v'\n", entry.Person)
 				manager.availability[entry.Person] = manager.generateAvailability()
+			}
+
+			// If the entry has availability, add it to the manager's availability map
+			for k, v := range entry.Availability {
+				manager.availability[entry.Person][k] = v
 			}
 		}
 	}
@@ -92,33 +115,33 @@ func InitTelegram(manager *Manager, s *telegram.BotAPI) {
 			}
 			poll := update.Poll
 
-			// Find the availability of a person who updated a poll
-			var availability map[string]bool
+			// Find the entry of the user who updated a poll
+			var entry *telegramEntry
 			var person Person
-			for _, entry := range telegramEntries {
-				if entry.PollID == poll.ID {
-					// Get the availability of the person
-					a, ok := manager.availability[entry.Person]
-					if !ok {
-						log.Printf("[WARN]: cannot get availability from person '%v'\n", entry.Person)
-						break
-					}
-
-					availability = a
-
-					// Find the associated person from the entry
-					for _, p := range manager.config.Persons {
-						if p.Name == entry.Person {
-							person = p
-							break
-						}
-					}
+			for _, e := range telegramEntries {
+				if e.PollID == poll.ID {
+					entry = e
 					break
 				}
 			}
 
-			// If no availability is found, continue
-			if availability == nil {
+			if entry == nil {
+				log.Printf("[WARN]: cannot find telegram entry for poll '%v'\n", poll.ID)
+				continue
+			}
+
+			// Find the associated person from the entry
+			for _, p := range manager.config.Persons {
+				if p.Name == entry.Person {
+					person = p
+					break
+				}
+			}
+
+			// Get the availability of the person
+			availability, ok := manager.availability[entry.Person]
+			if !ok {
+				log.Printf("[WARN]: cannot get availability from person '%v'\n", entry.Person)
 				continue
 			}
 
@@ -129,9 +152,18 @@ func InitTelegram(manager *Manager, s *telegram.BotAPI) {
 
 				log.Printf("[INFO]: availability for '%v' on '%v' is %v\n", person.Name, option.Text, available)
 			}
+
+			// Update the entry's availability
+			if manager.options.UseSQL {
+				log.Printf("[INFO]: updating telegram entry availability for '%v'\n", entry.Person)
+
+				entry.Availability = availability
+				if err := manager.db.Save(entry).Error; err != nil {
+					log.Printf("[ERR]: error saving telegram entry to SQL (err: %v)\n", err)
+				}
+			}
 		}
 	}()
-
 }
 
 // Request an availability schedule using telegram
@@ -201,17 +233,18 @@ func TelegramRequest(person Person, manager *Manager) error {
 
 		// Add this message as a recorded entry
 		entry := telegramEntry{
-			Person:    person.Name,
-			Index:     i,
-			PollID:    m.Poll.ID,
-			MessageID: int(m.Chat.ID),
-			Manager:   manager,
+			Person:       person.Name,
+			Index:        i,
+			PollID:       m.Poll.ID,
+			MessageID:    int(m.Chat.ID),
+			Manager:      manager,
+			Availability: availability,
 		}
 		telegramEntries = append(telegramEntries, &entry)
 
 		// If using SQL, add to SQL database
 		if manager.options.UseSQL {
-			log.Println("[INFO]: adding discord entry to SQL")
+			log.Println("[INFO]: adding telegram entry to SQL")
 			if err := manager.db.Save(&entry).Error; err != nil {
 				log.Printf("[ERR]: error saving telegram entry to SQL (err: %v)\n", err)
 			}

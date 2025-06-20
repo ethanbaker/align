@@ -27,7 +27,7 @@ type Manager struct {
 	Name       string       `gorm:"uniqueIndex,length:256"` // The name identifier for the manager
 	ContactDay sql.NullTime // The day persons are contacted
 
-	availability  map[string]map[string]bool `gorm:"-"` // Persons' availabilities
+	availability  map[string]AvailabilityMap `gorm:"-"` // Persons' availabilities
 	config        *Config                    `gorm:"-"` // Base align config
 	moduleConfigs map[string]interface{}     `gorm:"-"` // configs for "modules"
 	loc           *time.Location             `gorm:"-"` // Timezone location for cron
@@ -157,9 +157,9 @@ func (m *Manager) OnCompletion() {
 	log.Println("[INFO]: completion was successful")
 }
 
-// Generate a base availabiltiy map
-func (m *Manager) generateAvailability() map[string]bool {
-	availability := map[string]bool{}
+// Generate a base availability map
+func (m *Manager) generateAvailability() AvailabilityMap {
+	availability := AvailabilityMap{}
 
 	// Get the current date
 	year, month, day := m.ContactDay.Time.Date()
@@ -257,7 +257,7 @@ func CreateManager(name string, path string, options Options) (*Manager, error) 
 	}
 
 	// Populate manager fields
-	manager.availability = make(map[string]map[string]bool)
+	manager.availability = make(map[string]AvailabilityMap)
 	manager.moduleConfigs = make(map[string]interface{})
 	manager.config = &config
 	manager.edit = &sync.Mutex{}

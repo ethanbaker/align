@@ -7,9 +7,9 @@ type day struct {
 }
 
 // align a bunch of schedules together, returning a list of days n people are free
-func align(s map[string]map[string]bool, n int) []day {
+func align(s map[string]AvailabilityMap, n int) []day {
 	// Make a copy of the schedule map without nil availabilities
-	schedules := make(map[string]map[string]bool)
+	schedules := make(map[string]AvailabilityMap)
 	for k, v := range s {
 		if v != nil {
 			schedules[k] = v
