@@ -52,9 +52,11 @@ func (m *Manager) OnContact() {
 		m.options.OnContact()
 	}
 
-	if err := m.db.Save(m).Error; err != nil {
-		log.Printf("[ERR]: error saving contact day to SQL, stopping (err: %v)\n", err)
-		return
+	if m.options.UseSQL && m.db != nil {
+		if err := m.db.Save(m).Error; err != nil {
+			log.Printf("[ERR]: error saving contact day to SQL, stopping (err: %v)\n", err)
+			return
+		}
 	}
 
 	// For each person
