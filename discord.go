@@ -286,7 +286,7 @@ func DiscordGather(person Person, manager *Manager) error {
 }
 
 // Send a user a response summary on discord
-func DiscordResponse(person Person, manager *Manager, days []day, unknowns []string, available int) error {
+func DiscordResponse(person Person, manager *Manager, days []Day, unknowns []string, available int) error {
 	log.Println("[INFO]: loading discord config")
 
 	// Attempt to load the discord config

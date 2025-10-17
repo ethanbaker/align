@@ -335,7 +335,7 @@ func TelegramGather(person Person, manager *Manager) error {
 }
 
 // Send a user a response summary on telegram
-func TelegramResponse(person Person, manager *Manager, days []day, unknowns []string, available int) error {
+func TelegramResponse(person Person, manager *Manager, days []Day, unknowns []string, available int) error {
 	log.Println("[INFO]: loading telegram config")
 
 	// Attempt to load the telegram config

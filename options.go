@@ -4,4 +4,10 @@ package align
 type Options struct {
 	// Whether or not align should use an SQL database to persist messages in case of power outages/etc
 	UseSQL bool
+
+	// Custom handler for the OnContact event
+	OnContact func()
+
+	// Custom handler for the OnCompletion event
+	OnCompletion func(days []Day)
 }
