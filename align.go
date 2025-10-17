@@ -1,13 +1,13 @@
 package align
 
 // day is used to encapsulate day information
-type day struct {
+type Day struct {
 	Timestamp        string   // The timestamp of the day
 	AvailablePersons []string // Available people
 }
 
 // align a bunch of schedules together, returning a list of days n people are free
-func align(s map[string]AvailabilityMap, n int) []day {
+func align(s map[string]AvailabilityMap, n int) []Day {
 	// Make a copy of the schedule map without nil availabilities
 	schedules := make(map[string]AvailabilityMap)
 	for k, v := range s {
@@ -18,14 +18,14 @@ func align(s map[string]AvailabilityMap, n int) []day {
 
 	// Make sure schedules are present
 	if len(schedules) == 0 {
-		return []day{}
+		return []Day{}
 	}
 
 	// Initialize the list of days
-	days := map[string]day{}
+	days := map[string]Day{}
 	for key1 := range schedules { // We only need one schedule, so just grab the first one and break after
 		for date := range schedules[key1] {
-			days[date] = day{
+			days[date] = Day{
 				Timestamp:        date,
 				AvailablePersons: []string{},
 			}
@@ -47,7 +47,7 @@ func align(s map[string]AvailabilityMap, n int) []day {
 	}
 
 	// Filter out for days that meet the 'n' criteria
-	filter := []day{}
+	filter := []Day{}
 	for _, day := range days {
 		if len(day.AvailablePersons) >= n {
 			filter = append(filter, day)

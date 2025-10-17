@@ -46,6 +46,12 @@ func (m *Manager) OnContact() {
 	m.ContactDay.Time = now
 	m.ContactDay.Valid = true
 
+	// Run custom OnContact if it exists
+	if m.options.OnContact != nil {
+		log.Printf("[INFO]: running custom OnContact function\n")
+		m.options.OnContact()
+	}
+
 	if err := m.db.Save(m).Error; err != nil {
 		log.Printf("[ERR]: error saving contact day to SQL, stopping (err: %v)\n", err)
 		return
@@ -124,13 +130,19 @@ func (m *Manager) OnCompletion() {
 
 	// Everyone has sent in an availability schedule, so calculate available days
 	var n int
-	var days []day
+	var days []Day
 	for n = len(m.config.Persons) - len(unknowns); n > 0; n-- {
 		days = align(m.availability, n)
 
 		if len(days) > 0 {
 			break
 		}
+	}
+
+	// Run custom OnCompletion if it exists
+	if m.options.OnCompletion != nil {
+		log.Printf("[INFO]: running custom OnCompletion function\n")
+		m.options.OnCompletion(days)
 	}
 
 	log.Println("[INFO]: calculated available days")
@@ -258,7 +270,7 @@ func CreateManager(name string, path string, options Options) (*Manager, error) 
 
 	// Populate manager fields
 	manager.availability = make(map[string]AvailabilityMap)
-	manager.moduleConfigs = make(map[string]interface{})
+	manager.moduleConfigs = make(map[string]any)
 	manager.config = &config
 	manager.edit = &sync.Mutex{}
 	manager.options = &options

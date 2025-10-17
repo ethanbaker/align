@@ -13,7 +13,7 @@ var gathers = map[string]func(Person, *Manager) error{
 }
 
 // All possible response methods
-var responses = map[string]func(Person, *Manager, []day, []string, int) error{
+var responses = map[string]func(Person, *Manager, []Day, []string, int) error{
 	"discord":  DiscordResponse,
 	"telegram": TelegramResponse,
 }
