@@ -30,6 +30,12 @@ func TestDiscord(t *testing.T) {
 	// Create a new manager
 	manager, err := align.CreateManager("test-discord", "./testing/config.yml", align.Options{
 		UseSQL: false,
+		OnContact: func() {
+			log.Printf("[CUSTOM]: on contact called\n")
+		},
+		OnCompletion: func(days []align.Day) {
+			log.Printf("[CUSTOM]: on completion called with days: %v\n", days)
+		},
 	})
 	require.Nil(err)
 
