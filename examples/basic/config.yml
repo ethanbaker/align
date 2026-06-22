@@ -1,0 +1,18 @@
+settings:
+  title: "Group Meetup"
+  interval: 7                   # poll this many days per cycle
+  offset: 2                     # start window this many days after contact
+  timezone: "America/New_York"
+  contact_time: "0 10 * * 0"   # Sunday 10:00 AM — send polls
+  deadline_time: "0 10 * * 1"  # Monday 10:00 AM — gather & send results
+
+persons:
+  - name: "Alice"
+    request_method: "discord"
+    response_method: "discord"
+    id: "ALICE_DISCORD_USER_ID"
+
+  - name: "Bob"
+    request_method: "telegram"
+    response_method: "telegram"
+    id: "BOB_TELEGRAM_USER_ID"

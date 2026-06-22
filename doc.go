@@ -1,82 +1,102 @@
 /*
-Align is a scheduling tool that allows users to schedule events with other users. It is designed to be modular, so that
-users can easily receive schedule reminders and updates through different platforms. Align's configuration file has
-settings described below:
+Package align is a wire-in library that calculates time windows when a group
+of people are mutually available. It is designed to be imported by a consumer
+binary that provides the platform-specific communication layer.
 
-```yaml
-settings:
+# Architecture
 
-	title: "Group Meetup"        # Title of the event
-	interval: 7                  # How many days to ask for availability
-	offset: 2                    # How many days past the contact time to ask for availability
-	timezone: "America/New_York" # Timezone that cron strings are based on
-	contact_time: "0 10 * * 0"   # Contact time cron string (Sunday at 10:00 AM)
-	deadline_time: "0 10 * * 1"  # Deadline time cron string (Monday at 10:00 AM)
+The module is split into three layers:
 
-persons:
+  - Core package (this package): domain types, date-intersection logic, and the
+    Contactor and Persister interfaces.
+  - Adapter packages (discord, telegram): thin wrappers around platform SDKs
+    that implement Contactor.
+  - Consumer binary (example): reads config, constructs adapters and a
+    Scheduler, then starts the scheduling loop.
 
-  - name: "Person 1"   	         # Name of the person
-    request_method: "discord"    # Method to request information from
-    response_method: "discord"   # Method to respond with information
-    id: "PERSONS_ID"             # Identifiying string for the person (Discord ID, Telegram ID, etc.)
+The dependency direction is strict and one-way: adapter packages import the
+core package; the core package knows nothing about the adapters.
 
-  - name: "Person 2"
-    ...
+# Configuration
 
-```
+Provide a YAML configuration file with the following structure:
 
-Currently, the `request_method` and `response_methods` must be the same value, but this will be changed in future updates.
+	settings:
+	  title: "Group Meetup"        # label shown in poll messages
+	  interval: 7                  # number of days to poll per cycle
+	  offset: 2                    # days after contact_time to start the window
+	  timezone: "America/New_York" # IANA timezone for cron strings
+	  contact_time: "0 10 * * 0"   # cron: when to send availability polls
+	  deadline_time: "0 10 * * 1"  # cron: when to gather responses and notify
 
-Examples for each module can be found in the 'examples/' directory. These directories contain the most barebones setup
-align needs to function. If you are using align in a more complicated package, you can provide the same types in the
-examples to get align working.
+	persons:
+	  - name: "Alice"
+	    request_method: "discord"    # platform used to ask for availability
+	    response_method: "discord"   # platform used to send the result
+	    id: "ALICE_DISCORD_USER_ID"
 
-## SQL
+	  - name: "Bob"
+	    request_method: "telegram"
+	    response_method: "telegram"
+	    id: "BOB_TELEGRAM_USER_ID"
 
-Align has an option to use SQL to store availability data. This is useful if align ever stops running (server resetting,
-power outages, etc). If align is restarted without persisting data, the availability data may be lost, and the subsequent
-schedule alignment may be incorrect (align tries to mitigate this fact as much as possible, but some necessary data cannot
-be recovered in this case, such as discord message IDs).
+request_method and response_method must match a key in the map of Contactors
+passed to NewScheduler (e.g. "discord" or "telegram"). Different platforms may
+be used for request and response.
 
-You can provide SQL credentials to the align configuration file to use SQL. The yaml format is as follows:
+# Contactor interface
 
-```yaml
-sql:
+Platform adapters implement Contactor:
 
-	user: SQL_USER
-	passwd: SQL_PASSWD
-	net: SQL_NET
-	addr: SQL_ADDR
-	dbname: SQL_DBNAME
+  - Request: send an availability poll to a person.
+  - Gather: collect their responses (returns an AvailabilityMap).
+  - Notify: deliver the final scheduling result.
 
-```
+Adapters are thin translators; all business logic lives in the core package.
 
-## Discord
+# Persister interface
 
-Discord is easy to set up with align. Simply providing a Discord session to align will allow it to send and receive
-messages. Keep in mind that, in order for a Discord bot to send a message to a user, it must be in a mutual server
-with said user. This is a limitation of the Discord API, and align cannot bypass this.
+Persisters allow an in-progress session to survive a process restart:
 
-To collect Discord IDs, you can right click on a profile you want to contact and click 'Copy User ID.' You can provide
-this information to align's configuration file.
+  - Save: write Session state to durable storage.
+  - Load: restore a Session by name. Return (nil, nil) if none exists.
 
-## Telegram
+NopPersister is provided for in-memory-only use. Implement Persister backed by
+SQL, a file, or any other store for production durability.
 
-To initialize telegram with align, you can start a telegram session using [telegram-bot-api](https://github.com/go-telegram-bot-api/telegram-bot-api).
-This package is used to interact with the Telegram Bot API. Once you have started this session, align can use it to send and receive messages
-for easy and convienient scheduling.
+# Quick start
 
-However, Telegram is more difficult to set up and maintain with align. These constraints originate from the [Telegram Bot API](https://core.telegram.org/bots/api) itself. These reasons are:
-* Telegram bots are not allowed to send messages to users who have not initiated some sort of conversation with the bot
-* Telegram servers only store updates for 24 hours, so if the bot is down for more than 24 hours, it may not receive poll updates
+	// Create platform adapters.
+	discordAdapter := discord.New(discordSession)
+	telegramAdapter := telegram.New(telegramBot)
 
-So, to use Telegram with align, you must:
-* Have users initiate a conversation with the bot using '/start', or clicking the bottom of the bar when messaging the bot. The bot does not have to be online, but it must be activated within 24 hours to receive the update
-* Keep the bot online at least once every 24 hours so it can receive updates from telegram. If the bot is down for more than 24 hours, it may not receive poll updates and return incorrect schedule times
+	// Create a scheduler.
+	scheduler, err := align.NewScheduler(
+	    "my-group",
+	    "./config.yml",
+	    map[string]align.Contactor{
+	        "discord":  discordAdapter,
+	        "telegram": telegramAdapter,
+	    },
+	    align.NopPersister{},
+	)
 
-The best way to do this in practice is to approach the user you want to contact using Telegram and have them start a
-conversation with the bot while the bot is online (or during the 24 hour update period). This way, the bot can send
-messages to the user without any issues. Secondly, you need to receive this user's Telegram User ID (not username). This can
-be done by having that user message '@userinfobot', clicking 'start', and recording the 'User Id Information' field.
+	// Start the cron-driven loop (non-blocking).
+	scheduler.Start()
+
+See the example/ directory for a complete runnable program.
+
+# Discord notes
+
+The Discord bot must share a server with each user it messages — this is a
+Discord API constraint. Collect user IDs by right-clicking a profile and
+choosing "Copy User ID" (Developer Mode must be enabled).
+
+# Telegram notes
+
+Telegram bots cannot initiate conversations. Each person must send the bot at
+least one message (e.g. /start) before the bot can message them. Additionally,
+Telegram stores updates for only 24 hours, so the bot must receive updates at
+least once per day to avoid missing poll responses.
 */
 package align
