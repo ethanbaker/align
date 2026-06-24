@@ -1,9 +1,9 @@
 // Package main demonstrates how to use align with a durable SQL-backed
 // Persister so that in-progress sessions survive a process restart.
 //
-// It implements align.Persister directly using GORM + MySQL. You can copy
-// this implementation into your own project or adapt it to any other SQL
-// driver that GORM supports (PostgreSQL, SQLite, etc.).
+// It uses the reusable align/persister/mysql package, which implements
+// align.Persister with GORM + MySQL. See that package if you need to adapt
+// it to another SQL driver that GORM supports (PostgreSQL, SQLite, etc.).
 //
 // Required environment variables:
 //
@@ -16,93 +16,19 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	mysql_driver "github.com/go-sql-driver/mysql"
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethanbaker/align"
-	"github.com/ethanbaker/align/discord"
-	"github.com/ethanbaker/align/telegram"
+	"github.com/ethanbaker/align/adapter/discord"
+	"github.com/ethanbaker/align/adapter/telegram"
+	"github.com/ethanbaker/align/persister/mysql"
+	mysql_driver "github.com/go-sql-driver/mysql"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
 )
-
-// ----- SQL Persister -------------------------------------------------------
-
-// sessionRow is the GORM model used to persist a single Session.
-type sessionRow struct {
-	gorm.Model
-	Name         string     `gorm:"uniqueIndex;size:256"`
-	ContactDay   *time.Time `gorm:"index"`
-	Availability string     `gorm:"type:json"` // JSON-encoded map[string]AvailabilityMap
-}
-
-// SQLPersister implements align.Persister using a GORM database.
-type SQLPersister struct {
-	db *gorm.DB
-}
-
-// NewSQLPersister opens a GORM connection to the given DSN, migrates the
-// sessions table, and returns a ready SQLPersister.
-func NewSQLPersister(dsn string) (*SQLPersister, error) {
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	if err != nil {
-		return nil, fmt.Errorf("sql persister: open db: %w", err)
-	}
-	if err = db.AutoMigrate(&sessionRow{}); err != nil {
-		return nil, fmt.Errorf("sql persister: migrate: %w", err)
-	}
-	return &SQLPersister{db: db}, nil
-}
-
-// Save upserts the session into the database.
-func (p *SQLPersister) Save(session *align.Session) error {
-	avJSON, err := json.Marshal(session.Availability)
-	if err != nil {
-		return fmt.Errorf("sql persister: marshal availability: %w", err)
-	}
-
-	row := sessionRow{
-		Name:         session.Name,
-		ContactDay:   session.ContactDay,
-		Availability: string(avJSON),
-	}
-
-	return p.db.Where(sessionRow{Name: session.Name}).Assign(row).FirstOrCreate(&row).Error
-}
-
-// Load retrieves the session with the given name.
-// It returns (nil, nil) when no session exists yet.
-func (p *SQLPersister) Load(name string) (*align.Session, error) {
-	var row sessionRow
-	result := p.db.Where("name = ?", name).First(&row)
-	if result.Error == gorm.ErrRecordNotFound {
-		return nil, nil
-	}
-	if result.Error != nil {
-		return nil, fmt.Errorf("sql persister: load %q: %w", name, result.Error)
-	}
-
-	var availability map[string]align.AvailabilityMap
-	if err := json.Unmarshal([]byte(row.Availability), &availability); err != nil {
-		return nil, fmt.Errorf("sql persister: unmarshal availability for %q: %w", name, err)
-	}
-
-	return &align.Session{
-		Name:         row.Name,
-		ContactDay:   row.ContactDay,
-		Availability: availability,
-	}, nil
-}
-
-// ----- Consumer binary -----------------------------------------------------
 
 func main() {
 	// --- Platform sessions ---
@@ -128,17 +54,22 @@ func main() {
 		Addr:      os.Getenv("DB_ADDR"),
 		DBName:    os.Getenv("DB_NAME"),
 		ParseTime: true,
-	}.FormatDSN()
+	}
 
-	persister, err := NewSQLPersister(dsn)
+	persister, err := mysql.New(dsn.FormatDSN())
 	if err != nil {
 		log.Fatalf("persister: %v", err)
+	}
+
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		configPath = "./config.yml"
 	}
 
 	// --- Scheduler ---
 	scheduler, err := align.NewScheduler(align.SchedulerOptions{
 		Name:       "example-sql",
-		ConfigPath: "./config.yml",
+		ConfigPath: configPath,
 		Contactors: map[string]align.Contactor{
 			"discord":  discord.New(discordSession),
 			"telegram": telegram.New(telegramBot),

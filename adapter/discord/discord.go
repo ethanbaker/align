@@ -36,9 +36,13 @@ const responseBody = `⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜
 
 var emojis = []string{"1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣"}
 
+// persisterKey scopes this adapter's entries in a Persister.
+const persisterKey = "discord"
+
 // entry tracks a single message sent during a Request call so Gather can
 // retrieve the reactions for it later.
 type entry struct {
+	id        uint
 	person    string
 	index     int
 	channelID string
@@ -47,9 +51,11 @@ type entry struct {
 
 // Adapter implements align.Contactor for Discord.
 type Adapter struct {
-	session *discordgo.Session
-	mu      sync.Mutex
-	entries []*entry
+	session      *discordgo.Session
+	mu           sync.Mutex
+	entries      []*entry
+	persister    align.Persister
+	alignSession *align.Session
 }
 
 // New creates a Discord Adapter from an already-opened discordgo.Session.
@@ -121,6 +127,8 @@ func (a *Adapter) Request(person align.Person, dates []string) error {
 		log.Printf("[discord]: sent batch %d to %q\n", i, person.Name)
 	}
 
+	a.saveEntries()
+
 	return nil
 }
 
@@ -177,12 +185,14 @@ func (a *Adapter) Gather(person align.Person, dates []string) (align.Availabilit
 		}
 	}
 
+	a.saveEntries()
+
 	log.Printf("[discord]: gathered availability for %q\n", person.Name)
 	return availability, nil
 }
 
 // Notify sends the scheduling result to person via Discord DM.
-func (a *Adapter) Notify(person align.Person, days []align.Day, unknowns []string, available int) error {
+func (a *Adapter) Notify(person align.Person, title string, days []align.Day, unknowns []string, available int) error {
 	if a.session == nil {
 		return fmt.Errorf("discord: session is nil")
 	}
@@ -206,11 +216,105 @@ func (a *Adapter) Notify(person align.Person, days []align.Day, unknowns []strin
 		return fmt.Errorf("discord: open DM channel for %q: %w", person.Name, err)
 	}
 
-	msg := fmt.Sprintf(responseBody, person.Name, available, available+len(unknowns), dayLines.String(), unknownPrefix, unknownLines.String())
+	msg := fmt.Sprintf(responseBody, title, available, available+len(unknowns), dayLines.String(), unknownPrefix, unknownLines.String())
 	if _, err = a.session.ChannelMessageSend(channel.ID, msg); err != nil {
 		return fmt.Errorf("discord: send result to %q: %w", person.Name, err)
 	}
 
 	log.Printf("[discord]: sent result to %q\n", person.Name)
 	return nil
+}
+
+// SetPersister gives the Adapter a Persister to save and restore its
+// in-flight entries with. Any previously saved entries are loaded
+// immediately; the Adapter saves its entries back to p whenever they change.
+func (a *Adapter) SetPersister(p align.Persister, session *align.Session) {
+	a.mu.Lock()
+	a.persister = p
+	a.alignSession = session
+	a.mu.Unlock()
+
+	if p == nil {
+		return
+	}
+
+	entries, err := p.LoadEntries(persisterKey, session)
+	if err != nil {
+		log.Printf("[discord]: error loading entries: %v\n", err)
+		return
+	}
+
+	a.mu.Lock()
+	a.loadEntriesLocked(entries)
+	a.mu.Unlock()
+}
+
+// VoidEntries discards the Adapter's currently tracked entries, both in
+// memory and in its Persister, if one has been set.
+func (a *Adapter) VoidEntries() error {
+	a.mu.Lock()
+	p := a.persister
+	session := a.alignSession
+	a.entries = nil
+	a.mu.Unlock()
+
+	if p == nil {
+		return nil
+	}
+
+	if err := p.VoidEntries(persisterKey, session); err != nil {
+		return fmt.Errorf("discord: void entries: %w", err)
+	}
+
+	return nil
+}
+
+// loadEntriesLocked replaces a.entries with entries. Callers must hold a.mu.
+func (a *Adapter) loadEntriesLocked(entries []align.Entry) {
+	a.entries = make([]*entry, 0, len(entries))
+	for _, e := range entries {
+		a.entries = append(a.entries, &entry{
+			id:        e.ID,
+			person:    e.Person,
+			index:     e.Index,
+			channelID: e.Fields["channelID"],
+			messageID: e.Fields["messageID"],
+		})
+	}
+}
+
+// saveEntries persists the Adapter's current entries via its Persister, if
+// one has been set, so platform state (e.g. message IDs) survives a restart.
+// IDs the Persister assigns to new entries are written back so the next call
+// updates the same records instead of creating duplicates.
+func (a *Adapter) saveEntries() {
+	a.mu.Lock()
+	p := a.persister
+	session := a.alignSession
+	entries := make([]align.Entry, 0, len(a.entries))
+	for _, e := range a.entries {
+		entries = append(entries, align.Entry{
+			ID:     e.id,
+			Person: e.person,
+			Index:  e.index,
+			Fields: map[string]string{
+				"channelID": e.channelID,
+				"messageID": e.messageID,
+			},
+		})
+	}
+	a.mu.Unlock()
+
+	if p == nil {
+		return
+	}
+
+	if err := p.SaveEntries(persisterKey, session, entries); err != nil {
+		log.Printf("[discord]: error saving entries: %v\n", err)
+		return
+	}
+
+	a.mu.Lock()
+	a.loadEntriesLocked(entries)
+	a.mu.Unlock()
 }

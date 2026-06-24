@@ -9,6 +9,7 @@ import (
 
 	"github.com/robfig/cron/v3"
 	"gopkg.in/yaml.v3"
+	"gorm.io/gorm"
 )
 
 const dayDuration = int(time.Hour * 24)
@@ -73,9 +74,14 @@ func NewScheduler(opts SchedulerOptions) (*Scheduler, error) {
 		return nil, err
 	}
 
+	persister := opts.Persister
+	if persister == nil {
+		persister = NopPersister{}
+	}
+
 	s := &Scheduler{
 		contactors:          opts.Contactors,
-		persister:           opts.Persister,
+		persister:           persister,
 		config:              &config,
 		loc:                 loc,
 		contactListeners:    opts.OnContact,
@@ -83,7 +89,7 @@ func NewScheduler(opts SchedulerOptions) (*Scheduler, error) {
 	}
 
 	// Restore a previous session if one exists.
-	saved, err := opts.Persister.Load(opts.Name)
+	saved, err := persister.LoadSession(opts.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -92,12 +98,29 @@ func NewScheduler(opts SchedulerOptions) (*Scheduler, error) {
 		s.session = saved
 	} else {
 		s.session = &Session{
-			Name:         opts.Name,
-			Availability: make(map[string]AvailabilityMap),
+			Model: &gorm.Model{},
+			Name:  opts.Name,
 		}
 	}
 
+	// Give each Contactor the Persister and current Session so it can save
+	// and restore its own in-flight entries, tagged with the Session's ID.
+	for _, contactor := range s.contactors {
+		contactor.SetPersister(persister, s.session)
+	}
+
+	if err := persister.SaveSession(s.session); err != nil {
+		return nil, err
+	}
+
 	return s, nil
+}
+
+// Session returns a snapshot of the current session state.
+func (s *Scheduler) Session() *Session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.session
 }
 
 // Start registers the cron jobs for the contact and completion phases and
@@ -123,9 +146,8 @@ func (s *Scheduler) OnContact() {
 
 	now := time.Now().In(s.loc)
 	s.session.ContactDay = &now
-	s.session.Availability = make(map[string]AvailabilityMap)
 
-	if err := s.persister.Save(s.session); err != nil {
+	if err := s.persister.SaveSession(s.session); err != nil {
 		log.Printf("[ERR]: error persisting session after contact: %v\n", err)
 	}
 
@@ -154,6 +176,7 @@ func (s *Scheduler) OnContact() {
 func (s *Scheduler) OnCompletion() {
 	log.Println("[INFO]: starting completion phase")
 
+	availability := make(map[string]AvailabilityMap)
 	dates := s.dates()
 
 	// Gather availability for each person.
@@ -163,14 +186,15 @@ func (s *Scheduler) OnCompletion() {
 			log.Printf("[ERR]: no contactor registered for method %q (person %q)\n", person.RequestMethod, person.Name)
 			continue
 		}
-		availability, err := contactor.Gather(person, dates)
+
+		a, err := contactor.Gather(person, dates)
 		if err != nil {
 			log.Printf("[ERR]: Gather failed for person %q: %v\n", person.Name, err)
 			continue
 		}
 
 		s.mu.Lock()
-		s.session.Availability[person.Name] = availability
+		availability[person.Name] = a
 		s.mu.Unlock()
 
 		log.Printf("[INFO]: gathered availability for %q\n", person.Name)
@@ -178,7 +202,7 @@ func (s *Scheduler) OnCompletion() {
 
 	// Identify persons who gave no availability at all.
 	unknowns := []string{}
-	for k, schedule := range s.session.Availability {
+	for k, schedule := range availability {
 		hasTrue := false
 		for _, available := range schedule {
 			if available {
@@ -187,7 +211,7 @@ func (s *Scheduler) OnCompletion() {
 			}
 		}
 		if !hasTrue || schedule == nil {
-			delete(s.session.Availability, k)
+			delete(availability, k)
 			unknowns = append(unknowns, k)
 		}
 	}
@@ -200,7 +224,7 @@ func (s *Scheduler) OnCompletion() {
 	var n int
 	var days []Day
 	for n = len(s.config.Persons) - len(unknowns); n > 0; n-- {
-		days = align(s.session.Availability, n)
+		days = align(availability, n)
 		if len(days) > 0 {
 			break
 		}
@@ -221,10 +245,18 @@ func (s *Scheduler) OnCompletion() {
 			log.Printf("[ERR]: no contactor registered for method %q (person %q)\n", person.ResponseMethod, person.Name)
 			continue
 		}
-		if err := contactor.Notify(person, days, unknowns, n); err != nil {
+		if err := contactor.Notify(person, s.config.Title, days, unknowns, n); err != nil {
 			log.Printf("[ERR]: Notify failed for person %q: %v\n", person.Name, err)
 		} else {
 			log.Printf("[INFO]: result sent to %q via %q\n", person.Name, person.ResponseMethod)
+		}
+	}
+
+	// Void every Contactor's entries now that this round is finished, so
+	// stale entries don't accumulate or get mistaken for the next round's.
+	for name, contactor := range s.contactors {
+		if err := contactor.VoidEntries(); err != nil {
+			log.Printf("[ERR]: error voiding entries for contactor %q: %v\n", name, err)
 		}
 	}
 

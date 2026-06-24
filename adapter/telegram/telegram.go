@@ -29,8 +29,12 @@ const responseBody = `Schedule results for %v
 
 %v%v%v`
 
+// persisterKey scopes this adapter's entries in a Persister.
+const persisterKey = "telegram"
+
 // entry tracks a single Telegram poll sent during a Request call.
 type entry struct {
+	id        uint
 	person    string
 	index     int
 	pollID    string
@@ -44,6 +48,8 @@ type Adapter struct {
 	mu           sync.Mutex
 	entries      []*entry
 	availability map[string]align.AvailabilityMap // person name → date → available
+	persister    align.Persister
+	session      *align.Session
 }
 
 // New creates a Telegram Adapter and starts a background goroutine to process
@@ -97,6 +103,8 @@ func (a *Adapter) listenUpdates() {
 			log.Printf("[telegram]: %q availability on %q: %v\n", matched.person, opt.Text, opt.VoterCount > 0)
 		}
 		a.mu.Unlock()
+
+		a.saveEntries()
 	}
 }
 
@@ -156,6 +164,8 @@ func (a *Adapter) Request(person align.Person, dates []string) error {
 		log.Printf("[telegram]: sent poll batch %d to %q\n", i, person.Name)
 	}
 
+	a.saveEntries()
+
 	return nil
 }
 
@@ -208,12 +218,14 @@ func (a *Adapter) Gather(person align.Person, dates []string) (align.Availabilit
 		}
 	}
 
+	a.saveEntries()
+
 	log.Printf("[telegram]: gathered availability for %q\n", person.Name)
 	return av, nil
 }
 
 // Notify sends the scheduling result to person as a Telegram message.
-func (a *Adapter) Notify(person align.Person, days []align.Day, unknowns []string, available int) error {
+func (a *Adapter) Notify(person align.Person, title string, days []align.Day, unknowns []string, available int) error {
 	if a.bot == nil {
 		return fmt.Errorf("telegram: bot is nil")
 	}
@@ -237,7 +249,7 @@ func (a *Adapter) Notify(person align.Person, days []align.Day, unknowns []strin
 		}
 	}
 
-	text := fmt.Sprintf(responseBody, person.Name, available, available+len(unknowns), dayLines, unknownPrefix, unknownLines)
+	text := fmt.Sprintf(responseBody, title, available, available+len(unknowns), dayLines, unknownPrefix, unknownLines)
 	msg := tgbotapi.NewMessage(userID, text)
 	if _, err = a.bot.Send(msg); err != nil {
 		return fmt.Errorf("telegram: send result to %q: %w", person.Name, err)
@@ -245,4 +257,118 @@ func (a *Adapter) Notify(person align.Person, days []align.Day, unknowns []strin
 
 	log.Printf("[telegram]: sent result to %q\n", person.Name)
 	return nil
+}
+
+// SetPersister gives the Adapter a Persister to save and restore its
+// in-flight entries with. Any previously saved entries (and the live vote
+// accumulator carried in their Availability field) are loaded immediately;
+// the Adapter saves its entries back to p whenever they change.
+func (a *Adapter) SetPersister(p align.Persister, session *align.Session) {
+	a.mu.Lock()
+	a.persister = p
+	a.session = session
+	a.mu.Unlock()
+
+	if p == nil {
+		return
+	}
+
+	entries, err := p.LoadEntries(persisterKey, session)
+	if err != nil {
+		log.Printf("[telegram]: error loading entries: %v\n", err)
+		return
+	}
+
+	a.mu.Lock()
+	a.loadEntriesLocked(entries)
+	a.mu.Unlock()
+}
+
+// VoidEntries discards the Adapter's currently tracked entries, both in
+// memory and in its Persister, if one has been set.
+func (a *Adapter) VoidEntries() error {
+	a.mu.Lock()
+	p := a.persister
+	session := a.session
+	a.entries = nil
+	a.mu.Unlock()
+
+	if p == nil {
+		return nil
+	}
+
+	if err := p.VoidEntries(persisterKey, session); err != nil {
+		return fmt.Errorf("telegram: void entries: %w", err)
+	}
+
+	return nil
+}
+
+// loadEntriesLocked replaces a.entries with entries, restoring each person's
+// live vote accumulator from its Availability field (falling back to an
+// empty map so the update listener can still record votes for polls that
+// were already in flight). Callers must hold a.mu.
+func (a *Adapter) loadEntriesLocked(entries []align.Entry) {
+	a.entries = make([]*entry, 0, len(entries))
+	for _, e := range entries {
+		messageID, _ := strconv.Atoi(e.Fields["messageID"])
+		chatID, _ := strconv.ParseInt(e.Fields["chatID"], 10, 64)
+
+		a.entries = append(a.entries, &entry{
+			id:        e.ID,
+			person:    e.Person,
+			index:     e.Index,
+			pollID:    e.Fields["pollID"],
+			messageID: messageID,
+			chatID:    chatID,
+		})
+
+		if e.Availability != nil {
+			a.availability[e.Person] = e.Availability
+		} else if _, ok := a.availability[e.Person]; !ok {
+			a.availability[e.Person] = make(align.AvailabilityMap)
+		}
+	}
+}
+
+// saveEntries persists the Adapter's current entries via its Persister, if
+// one has been set, so platform state (e.g. poll IDs and accumulated votes)
+// survives a restart. IDs the Persister assigns to new entries are written
+// back so the next call updates the same records instead of creating
+// duplicates.
+func (a *Adapter) saveEntries() {
+	a.mu.Lock()
+	p := a.persister
+	session := a.session
+	entries := make([]align.Entry, 0, len(a.entries))
+	for _, e := range a.entries {
+		entries = append(entries, align.Entry{
+			ID:     e.id,
+			Person: e.person,
+			Index:  e.index,
+			Fields: map[string]string{
+				"pollID":    e.pollID,
+				"messageID": strconv.Itoa(e.messageID),
+				"chatID":    strconv.FormatInt(e.chatID, 10),
+			},
+			// Attach the live vote accumulator so it survives a restart;
+			// the listener goroutine otherwise loses every vote received
+			// for this person once the process stops.
+			Availability: a.availability[e.person],
+		})
+	}
+	a.mu.Unlock()
+
+	if p == nil {
+		return
+	}
+
+	if err := p.SaveEntries(persisterKey, session, entries); err != nil {
+		log.Printf("[telegram]: error saving entries: %v\n", err)
+		return
+	}
+
+	a.mu.Lock()
+	a.loadEntriesLocked(entries)
+	a.mu.Unlock()
 }

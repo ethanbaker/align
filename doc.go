@@ -56,10 +56,13 @@ Adapters are thin translators; all business logic lives in the core package.
 
 # Persister interface
 
-Persisters allow an in-progress session to survive a process restart:
+Persisters allow an in-progress session, and each Contactor's in-flight
+entries, to survive a process restart:
 
-  - Save: write Session state to durable storage.
-  - Load: restore a Session by name. Return (nil, nil) if none exists.
+  - SaveSession/LoadSession: write/restore Session state, used by the Scheduler.
+  - SaveEntries/LoadEntries: write/restore a Contactor's own entries (e.g.
+    Discord message IDs or Telegram poll IDs), used directly by each
+    Contactor via SetPersister.
 
 NopPersister is provided for in-memory-only use. Implement Persister backed by
 SQL, a file, or any other store for production durability.

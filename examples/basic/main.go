@@ -21,8 +21,8 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethanbaker/align"
-	"github.com/ethanbaker/align/discord"
-	"github.com/ethanbaker/align/telegram"
+	"github.com/ethanbaker/align/adapter/discord"
+	"github.com/ethanbaker/align/adapter/telegram"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 

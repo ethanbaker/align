@@ -1,0 +1,9 @@
+settings:
+  title: "Test Event"
+  interval: 7
+  offset: 2
+  timezone: "Not/A_Real_Timezone"
+  contact_time: "0 10 * * 0"
+  deadline_time: "0 10 * * 1"
+
+persons: []
