@@ -13,7 +13,6 @@ type Entry struct {
 	ID uint `json:"id,omitempty"`
 
 	// SessionID links this entry back to the Session it was created under.
-	// It is set by the Scheduler before a Contactor saves its entries.
 	SessionID uint `json:"session_id,omitempty"`
 
 	// Person is the name of the person this entry belongs to.

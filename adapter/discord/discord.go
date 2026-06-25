@@ -16,7 +16,9 @@ import (
 
 const requestHeader = `⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜
 
-**Schedule for %v**`
+**Schedule**
+
+Please select the days you are free`
 
 const requestBody = `%v
 ❌ - None
@@ -75,12 +77,9 @@ func (a *Adapter) Request(person align.Person, dates []string) error {
 		return fmt.Errorf("discord: open DM channel for %q: %w", person.Name, err)
 	}
 
-	// We need the config title — embed it in messages using the header format
-	// (title is not available here; callers pass it via the dates slice context,
-	// so we use person.Name as a fallback label — the Scheduler passes the real
 	// title in the standard request header constant that references manager.config.Title).
 	// Since the Adapter does not have access to Config, we send the header without title.
-	if _, err = a.session.ChannelMessageSend(channel.ID, fmt.Sprintf(requestHeader, person.Name)); err != nil {
+	if _, err = a.session.ChannelMessageSend(channel.ID, requestHeader); err != nil {
 		return fmt.Errorf("discord: send header to %q: %w", person.Name, err)
 	}
 
