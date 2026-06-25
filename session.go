@@ -10,7 +10,7 @@ import (
 // All fields are exported and JSON-friendly so that a Persister can
 // serialize and restore the session across restarts.
 type Session struct {
-	*gorm.Model
+	gorm.Model
 	Name       string     `json:"name"`
 	ContactDay *time.Time `json:"contact_day,omitempty"`
 }

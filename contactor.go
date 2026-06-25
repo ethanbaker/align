@@ -18,10 +18,10 @@ type Contactor interface {
 	Notify(person Person, title string, days []Day, unknowns []string, available int) error
 
 	// VoidEntries discards the Contactor's currently persisted entries (e.g.
-	// open Discord messages or Telegram polls left over from a previous
-	// round), both in memory and in its Persister, if one has been set. The
-	// Scheduler calls this at the start of each contact phase so stale
-	// entries don't accumulate or get mistaken for the new round's.
+	// open Discord messages or Telegram polls), both in memory and in its
+	// Persister, if one has been set. The Scheduler calls this at the end of
+	// each completion phase, after results are sent, so the next round's
+	// Request doesn't inherit stale entries from this one.
 	VoidEntries() error
 
 	// SetPersister gives the Contactor a Persister to use for saving and

@@ -51,6 +51,8 @@ Platform adapters implement Contactor:
   - Request: send an availability poll to a person.
   - Gather: collect their responses (returns an AvailabilityMap).
   - Notify: deliver the final scheduling result.
+  - VoidEntries: discard the Contactor's in-flight entries; called by the
+    Scheduler after each round's results are sent.
 
 Adapters are thin translators; all business logic lives in the core package.
 
@@ -74,15 +76,15 @@ SQL, a file, or any other store for production durability.
 	telegramAdapter := telegram.New(telegramBot)
 
 	// Create a scheduler.
-	scheduler, err := align.NewScheduler(
-	    "my-group",
-	    "./config.yml",
-	    map[string]align.Contactor{
+	scheduler, err := align.NewScheduler(align.SchedulerOptions{
+	    Name:       "my-group",
+	    ConfigPath: "./config.yml",
+	    Contactors: map[string]align.Contactor{
 	        "discord":  discordAdapter,
 	        "telegram": telegramAdapter,
 	    },
-	    align.NopPersister{},
-	)
+	    Persister: align.NopPersister{},
+	})
 
 	// Start the cron-driven loop (non-blocking).
 	scheduler.Start()

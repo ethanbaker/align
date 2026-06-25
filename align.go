@@ -9,42 +9,28 @@ type Day struct {
 	AvailablePersons []string // Names of people available on this day
 }
 
-// align returns the days on which at least n people in s are available.
-func align(s map[string]AvailabilityMap, n int) []Day {
-	schedules := make(map[string]AvailabilityMap)
-	for k, v := range s {
-		if v != nil {
-			schedules[k] = v
-		}
+// align returns the days, in dates order, on which at least n people in s
+// are available.
+func align(s map[string]AvailabilityMap, dates []string, n int) []Day {
+	days := make(map[string]*Day, len(dates))
+	for _, date := range dates {
+		days[date] = &Day{Timestamp: date, AvailablePersons: []string{}}
 	}
 
-	if len(schedules) == 0 {
-		return []Day{}
-	}
-
-	days := map[string]Day{}
-	for key1 := range schedules {
-		for date := range schedules[key1] {
-			days[date] = Day{Timestamp: date, AvailablePersons: []string{}}
-		}
-		break
-	}
-
-	for name, availability := range schedules {
+	for name, availability := range s {
 		for date, available := range availability {
 			if available {
 				if day, ok := days[date]; ok {
 					day.AvailablePersons = append(day.AvailablePersons, name)
-					days[date] = day
 				}
 			}
 		}
 	}
 
 	filter := []Day{}
-	for _, day := range days {
-		if len(day.AvailablePersons) >= n {
-			filter = append(filter, day)
+	for _, date := range dates {
+		if day := days[date]; len(day.AvailablePersons) >= n {
+			filter = append(filter, *day)
 		}
 	}
 

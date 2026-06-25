@@ -75,9 +75,6 @@ func (p *Persister) SaveSession(session *align.Session) error {
 		return fmt.Errorf("mysql persister: save session %q: %w", session.Name, err)
 	}
 
-	if session.Model == nil {
-		session.Model = &gorm.Model{}
-	}
 	session.Model.ID = row.ID
 
 	return nil
@@ -96,7 +93,7 @@ func (p *Persister) LoadSession(name string) (*align.Session, error) {
 	}
 
 	return &align.Session{
-		Model:      &row.Model,
+		Model:      row.Model,
 		Name:       row.Name,
 		ContactDay: row.ContactDay,
 	}, nil
@@ -110,7 +107,7 @@ func (p *Persister) LoadSession(name string) (*align.Session, error) {
 // entries are never lost.
 func (p *Persister) SaveEntries(key string, session *align.Session, entries []align.Entry) error {
 	var sessionID uint
-	if session != nil && session.Model != nil {
+	if session != nil {
 		sessionID = session.ID
 	}
 
@@ -158,7 +155,7 @@ func (p *Persister) SaveEntries(key string, session *align.Session, entries []al
 // LoadEntries retrieves the entries previously saved under key for session.
 func (p *Persister) LoadEntries(key string, session *align.Session) ([]align.Entry, error) {
 	var sessionID uint
-	if session != nil && session.Model != nil {
+	if session != nil {
 		sessionID = session.ID
 	}
 
@@ -197,7 +194,7 @@ func (p *Persister) LoadEntries(key string, session *align.Session) ([]align.Ent
 // VoidEntries deletes every entry previously saved under key for session.
 func (p *Persister) VoidEntries(key string, session *align.Session) error {
 	var sessionID uint
-	if session != nil && session.Model != nil {
+	if session != nil {
 		sessionID = session.ID
 	}
 

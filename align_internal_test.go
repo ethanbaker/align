@@ -9,7 +9,7 @@ import (
 
 // TestAlignEmpty returns nothing when the schedule map is empty.
 func TestAlignEmpty(t *testing.T) {
-	days := align(map[string]AvailabilityMap{}, 1)
+	days := align(map[string]AvailabilityMap{}, nil, 1)
 	require.Empty(t, days)
 }
 
@@ -18,7 +18,7 @@ func TestAlignAllNil(t *testing.T) {
 	days := align(map[string]AvailabilityMap{
 		"Alice": nil,
 		"Bob":   nil,
-	}, 1)
+	}, []string{"Mon", "Tue"}, 1)
 	require.Empty(t, days)
 }
 
@@ -27,7 +27,7 @@ func TestAlignSinglePersonAvailable(t *testing.T) {
 	r := require.New(t)
 	days := align(map[string]AvailabilityMap{
 		"Alice": {"Mon": true, "Tue": false},
-	}, 1)
+	}, []string{"Mon", "Tue"}, 1)
 	r.Len(days, 1)
 	r.Equal("Mon", days[0].Timestamp)
 	r.Contains(days[0].AvailablePersons, "Alice")
@@ -40,15 +40,16 @@ func TestAlignThresholdFiltering(t *testing.T) {
 		"Alice": {"Mon": true, "Tue": true, "Wed": false},
 		"Bob":   {"Mon": true, "Tue": false, "Wed": false},
 	}
+	dates := []string{"Mon", "Tue", "Wed"}
 
 	// Both available on Mon only.
-	days := align(schedules, 2)
+	days := align(schedules, dates, 2)
 	r.Len(days, 1)
 	r.Equal("Mon", days[0].Timestamp)
 	r.ElementsMatch([]string{"Alice", "Bob"}, days[0].AvailablePersons)
 
 	// Alice available Mon and Tue; Bob only Mon.
-	days = align(schedules, 1)
+	days = align(schedules, dates, 1)
 	r.Len(days, 2)
 }
 
@@ -56,7 +57,7 @@ func TestAlignThresholdFiltering(t *testing.T) {
 func TestAlignThresholdTooHigh(t *testing.T) {
 	days := align(map[string]AvailabilityMap{
 		"Alice": {"Mon": true},
-	}, 5)
+	}, []string{"Mon"}, 5)
 	require.Empty(t, days)
 }
 

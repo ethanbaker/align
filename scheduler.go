@@ -9,7 +9,6 @@ import (
 
 	"github.com/robfig/cron/v3"
 	"gopkg.in/yaml.v3"
-	"gorm.io/gorm"
 )
 
 const dayDuration = int(time.Hour * 24)
@@ -98,8 +97,7 @@ func NewScheduler(opts SchedulerOptions) (*Scheduler, error) {
 		s.session = saved
 	} else {
 		s.session = &Session{
-			Model: &gorm.Model{},
-			Name:  opts.Name,
+			Name: opts.Name,
 		}
 	}
 
@@ -193,9 +191,7 @@ func (s *Scheduler) OnCompletion() {
 			continue
 		}
 
-		s.mu.Lock()
 		availability[person.Name] = a
-		s.mu.Unlock()
 
 		log.Printf("[INFO]: gathered availability for %q\n", person.Name)
 	}
@@ -224,7 +220,7 @@ func (s *Scheduler) OnCompletion() {
 	var n int
 	var days []Day
 	for n = len(s.config.Persons) - len(unknowns); n > 0; n-- {
-		days = align(availability, n)
+		days = align(availability, dates, n)
 		if len(days) > 0 {
 			break
 		}

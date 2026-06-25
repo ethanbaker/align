@@ -1,14 +1,5 @@
 package align
 
-// DSN holds SQL connection credentials.
-type DSN struct {
-	User   string `yaml:"user"`
-	Passwd string `yaml:"passwd"`
-	Net    string `yaml:"tcp"`
-	Addr   string `yaml:"addr"`
-	DBName string `yaml:"dbname"`
-}
-
 // Person is a contactable participant who provides their availability.
 type Person struct {
 	Name           string `yaml:"name"`            // Display name
@@ -30,6 +21,5 @@ type Settings struct {
 // Config is the top-level configuration loaded from YAML.
 type Config struct {
 	Persons  []Person `yaml:"persons"`
-	Dsn      *DSN     `yaml:"sql,omitempty"`
 	Settings `yaml:"settings"`
 }
