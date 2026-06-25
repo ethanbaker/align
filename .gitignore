@@ -1,1 +1,3 @@
-testing/
+local/
+.vscode/
+__debug_bin*

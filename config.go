@@ -1,40 +1,25 @@
 package align
 
-// DSN represents sql credentials for the service
-type DSN struct {
-	User   string `yaml:"user"`
-	Passwd string `yaml:"passwd"`
-	Net    string `yaml:"tcp"`
-	Addr   string `yaml:"addr"`
-	DBName string `yaml:"dbname"`
-}
-
-// Person represents a contactable person who provides feedback on what days they are free
+// Person is a contactable participant who provides their availability.
 type Person struct {
-	Name           string `yaml:"name"`            // The person's name
-	RequestMethod  string `yaml:"request_method"`  // The person's ideal contact method for availability requests
-	ResponseMethod string `yaml:"response_method"` // The person's ideal contact method for responses
-	ID             string `yaml:"id"`              // The person's ID used to contact them with a given method
+	Name           string `yaml:"name"`            // Display name
+	RequestMethod  string `yaml:"request_method"`  // Platform used to ask for availability
+	ResponseMethod string `yaml:"response_method"` // Platform used to send the result
+	ID             string `yaml:"id"`              // Platform-specific identifier
 }
 
-// Settings represent general configuration settings
+// Settings holds cron and window configuration for a scheduling round.
 type Settings struct {
-	Title           string `yaml:"title"`         // The title of the group
-	Interval        int    `yaml:"interval"`      // How many days to get availability for each cycle
-	Offset          int    `yaml:"offset"`        // How many days after the contact date should availability gathering start
-	ContactTimezone string `yaml:"timezone"`      // The timezone in which to contact persons
-	ContactTime     string `yaml:"contact_time"`  // A cron string that shows when the persons should be contacted
-	DeadlineTime    string `yaml:"deadline_time"` // A cron string that shows when the final decision should be made
+	Title           string `yaml:"title"`         // Group or event name shown in messages
+	Interval        int    `yaml:"interval"`      // Number of days to poll per cycle
+	Offset          int    `yaml:"offset"`        // Days after contact date to begin the window
+	ContactTimezone string `yaml:"timezone"`      // IANA timezone for cron strings
+	ContactTime     string `yaml:"contact_time"`  // Cron string: when to contact persons
+	DeadlineTime    string `yaml:"deadline_time"` // Cron string: when to gather responses and send results
 }
 
-// Config represents the configuration align will run off of
+// Config is the top-level configuration loaded from YAML.
 type Config struct {
-	// Persons to run the application for
-	Persons []Person `yaml:"persons"` // A list of persons to contact
-
-	// SQL Credentials
-	Dsn *DSN `yaml:"sql,omitempty"`
-
-	// Application configuration settings
+	Persons  []Person `yaml:"persons"`
 	Settings `yaml:"settings"`
 }

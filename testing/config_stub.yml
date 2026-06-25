@@ -1,0 +1,18 @@
+settings:
+  title: "Test Event"
+  interval: 7
+  offset: 2
+  timezone: "America/New_York"
+  contact_time: "0 10 * * 0"
+  deadline_time: "0 10 * * 1"
+
+persons:
+  - name: "Person 1"
+    request_method: "stub"
+    response_method: "stub"
+    id: "person-1"
+
+  - name: "Person 2"
+    request_method: "stub"
+    response_method: "stub"
+    id: "person-2"
